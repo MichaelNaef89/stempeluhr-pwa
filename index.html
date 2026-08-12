@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+    <title>Stempeluhr</title>
+
+    <meta name="description" content="Mobile Arbeitszeiterfassung – offline, lokal, mit CSV-Export." />
+    <meta name="theme-color" content="#181B1E" />
+    <meta name="color-scheme" content="dark" />
+
+    <!-- iOS Homescreen -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Stempeluhr" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" href="./icons/icon-192.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="eyebrow">Stempeluhr</div>
+        <div class="topbar-date" id="topbarDate">–</div>
+      </div>
+      <div class="clock" id="clock">--:--</div>
+    </header>
+
+    <main id="screen" class="screen" aria-live="polite">
+      <div class="loading">Lädt…</div>
+    </main>
+
+    <nav class="tabbar" id="tabbar" role="tablist" aria-label="Ansicht">
+      <button class="tab" data-screen="stempeln" role="tab" aria-selected="true">
+        <svg viewBox="0 0 24 24" class="tab-ico" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+        </svg>
+        <span>Stempeln</span>
+      </button>
+      <button class="tab" data-screen="tag" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" class="tab-ico" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" />
+        </svg>
+        <span>Tag</span>
+      </button>
+      <button class="tab" data-screen="woche" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" class="tab-ico" aria-hidden="true">
+          <path d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+        <span>Woche</span>
+      </button>
+      <button class="tab" data-screen="monat" role="tab" aria-selected="false">
+        <svg viewBox="0 0 24 24" class="tab-ico" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="17" rx="2" />
+          <path d="M3 9h18M9 9v12M15 9v12M3 15h18" />
+        </svg>
+        <span>Monat</span>
+      </button>
+    </nav>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="./db.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
