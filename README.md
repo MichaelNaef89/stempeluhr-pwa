@@ -122,3 +122,12 @@ Ein Record pro Tag, Key = ISO-Datum (`YYYY-MM-DD`):
 ```
 
 Leere Tage werden nicht gespeichert.
+
+## Deployment auf dem Pi
+
+- **Repo**: <https://github.com/MichaelNaef89/stempeluhr-pwa> (öffentlich, keine Secrets enthalten)
+- **Pi5**: `/home/pi/stempeluhr-pwa`, Dienst `stempeluhr-pwa.service` (statischer Python-Server auf Port 8002, nur `127.0.0.1`)
+- **HTTPS**: `tailscale serve` proxyt Port 8002 auf `https://pi5.tail0fe4c7.ts.net/`
+- **Workflow**: PC → `git push` → Pi: `cd /home/pi/stempeluhr-pwa && git pull && sudo systemctl restart stempeluhr-pwa.service`
+  (Neustart ist bei reinen HTML/CSS/JS-Änderungen eigentlich nicht nötig, da `python -m http.server`
+  Dateien live von der Platte liest – schadet aber nicht.)
