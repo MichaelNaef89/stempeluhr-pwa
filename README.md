@@ -14,7 +14,7 @@ automatisch auf einen kleinen Server, sobald eine Verbindung besteht.
 | **Woche** | Kalenderwoche (ISO), Stunden bzw. Absenz pro Tag, Tippen springt in die Tagesansicht, Wochentotal. |
 | **Monat** | Kalenderraster Mo–So mit Punkt je Tag (amber = gearbeitet, türkis = Absenz), Monatstotal. |
 | **Export** | CSV für Woche und Monat, Semikolon-getrennt mit BOM (öffnet in Excel de-CH direkt korrekt). |
-| **Sync** | Jede Änderung wird sofort ans Backend auf dem Pi geschickt; ohne Verbindung lokal gepuffert und automatisch nachgeholt. |
+| **Sync** | Jede Änderung wird sofort ans Backend auf dem Pi geschickt; ohne Verbindung lokal gepuffert und automatisch nachgeholt. Mehrpersonenfähig: jedes Gerät hat sein eigenes Profil, keine gegenseitigen Überschreibungen. |
 
 ## Architektur
 
@@ -28,21 +28,33 @@ tools/     Icon-Generator, Smoke-Test
 Absenzen etc. funktionieren immer sofort und komplett offline – der Server ist
 ein automatisches Backup, kein Ersatz dafür. Nach jeder Änderung versucht
 [`web/sync.js`](web/sync.js) im Hintergrund, den betroffenen Tag per `PUT
-/api/days/{iso}` an den Server zu schicken. Schlägt das fehl (kein Netz, Pi
-nicht erreichbar), merkt sich `sync.js` das Datum in `localStorage` und
-versucht es automatisch erneut – bei jedem `online`-Event, beim
+/api/{person}/days/{iso}` an den Server zu schicken. Schlägt das fehl (kein
+Netz, Pi nicht erreichbar), merkt sich `sync.js` das Datum in `localStorage`
+und versucht es automatisch erneut – bei jedem `online`-Event, beim
 Zurückkommen in den Vordergrund und zusätzlich alle 20 Sekunden, solange noch
 etwas offen ist. Ein kleiner Punkt oben rechts neben der Uhr zeigt den
 Sync-Status (gesichert / sync… / offline · n ausstehend).
 
+**Mehrpersonenfähig über einen Profilnamen pro Gerät.** Beim allerersten
+Start fragt die App einmalig nach einem Namen (z.B. „Michael" oder „Nadja"),
+gespeichert in `localStorage` auf diesem Gerät. Daraus wird ein URL-sicherer
+Slug gebildet (`Müller Käthe` → `muller-kathe`), der als eigener Bereich
+`/api/{slug}/days/...` auf dem Server dient. Zwei Geräte mit unterschiedlichem
+Namen schreiben also in getrennte Tabellenbereiche und überschreiben sich nie
+gegenseitig – auch nicht, wenn beide am selben Tag arbeiten. Der Name lässt
+sich jederzeit unter **Monat → Profil → ändern** anpassen (wirkt sich nur auf
+künftige Syncs aus, bereits gesendete Tage bleiben unter dem alten Namen
+liegen).
+
 Ist die lokale Datenbank beim Start komplett leer (Neuinstallation, neues
-Gerät), holt die App einmalig alle Tage vom Server nach (`GET /api/days`) –
-das deckt den Fall „Handy verloren/zurückgesetzt" ab, ohne dass ein manuelles
-Backup nötig ist.
+Gerät, gleicher Profilname), holt die App einmalig alle Tage dieses Profils
+vom Server nach (`GET /api/{person}/days`) – das deckt den Fall
+„Handy verloren/zurückgesetzt" ab, ohne dass ein manuelles Backup nötig ist.
 
 Kein Login: der Zugriffsschutz ist das Tailscale-Netz selbst (gleiches Modell
 wie beim Familien-Dashboard) – wer keinen Zugriff auf das Tailnet hat, kommt
-weder an die Seite noch an die API.
+weder an die Seite noch an die API. Der Profilname ist keine Authentifizierung,
+nur eine Datenraum-Trennung.
 
 ## Lokal testen
 
@@ -65,20 +77,24 @@ python -m http.server 8000
 
 Dann läuft die App normal, Sync bleibt einfach dauerhaft „offline" (unschädlich).
 
-## Auf dem Samsung-Handy installieren
+## Installieren (jedes Gerät braucht Tailscale)
 
-Der Service Worker verlangt **HTTPS** (Ausnahme: `localhost`). Aktuell läuft
-das über `tailscale serve` auf dem Pi – siehe *Deployment* unten. Ohne Pi
-funktionieren auch die Fallback-Wege:
+Die App läuft unter **https://pi5.tail0fe4c7.ts.net/** – erreichbar für jedes
+Gerät, das im selben Tailnet ist. Voraussetzung auf dem neuen Gerät:
 
-1. **GitHub Pages** – `web/`-Inhalt in ein Repo pushen, Pages auf den Branch
-   zeigen lassen (dann läuft nur das Frontend, ohne Server-Sync).
-2. **Netlify Drop** – <https://app.netlify.com/drop>, `web/`-Ordner ins
-   Browserfenster ziehen. Anonyme Deploys verfallen nach ~1h ohne
-   Account-Claim.
+1. **Tailscale-App installieren** (Play Store / App Store / [tailscale.com/download](https://tailscale.com/download))
+2. **Zum Tailnet einladen lassen** – der Tailnet-Besitzer (`michael.naef89@gmail.com`)
+   schickt einen Einladungslink über die Tailscale-Admin-Konsole; ohne Einladung
+   kein Zugriff, das ist der gesamte Zugriffsschutz der App.
+3. In der Tailscale-App einloggen/anmelden, Verbindung sicherstellen (grüner Status)
+4. **https://pi5.tail0fe4c7.ts.net/** in einem normalen Browser öffnen
 
-Die URL dann auf dem Samsung-Gerät öffnen:
+**Erster Start:** Die App fragt einmalig nach einem Namen („Wie heisst du?").
+Jede Person gibt ihren eigenen Namen ein – das trennt die Daten serverseitig
+(siehe *Architektur* oben). Der Name lässt sich später unter
+*Monat → Profil → ändern* korrigieren.
 
+### Samsung / Android
 - **Chrome:** Seite öffnen → unten/oben taucht automatisch ein Install-Banner
   auf, sonst über ⋮ (Menü) → *App installieren*. Landet als eigenes Icon auf
   dem Homescreen, startet ohne Adressleiste.
@@ -86,8 +102,30 @@ Die URL dann auf dem Samsung-Gerät öffnen:
   *Startbildschirm hinzufügen* (oder *Apps* → *Diese Seite installieren*,
   je nach Version).
 
-Beide Browser erkennen `manifest.json` + Service Worker automatisch und bieten
-die Installation von selbst an.
+### Mac
+- **Safari (empfohlen, macOS Sonoma 14+):** Seite öffnen → Menü *Ablage* →
+  *Zum Dock hinzufügen…* (oder Teilen-Symbol in der Adressleiste →
+  *Zum Dock hinzufügen*). Landet als eigenständige App im Dock, eigenes
+  Fenster ohne Adressleiste, Tailscale muss dafür nicht dauerhaft laufen –
+  nur beim eigentlichen Stempeln/Sync.
+- **Chrome:** Seite öffnen → Adressleiste → Install-Symbol (⊕ mit Monitor)
+  ganz rechts, oder ⋮-Menü → *Übertragen* → *[Seite] installieren*. Landet im
+  Launchpad/Programme-Ordner wie eine normale App.
+- Ältere macOS-Versionen ohne „Zum Dock hinzufügen" in Safari: Chrome
+  installieren und den Chrome-Weg nutzen.
+
+Alle drei Browser erkennen `manifest.json` + Service Worker automatisch und
+bieten die Installation von selbst an.
+
+### Ohne Pi (Fallback, kein Server-Sync)
+
+Falls der Pi mal nicht erreichbar sein soll (z.B. Weitergabe an Aussenstehende
+ohne Tailscale-Zugriff): `web/`-Inhalt separat hosten, dann läuft nur das
+Frontend offline-fähig, ohne automatischen Sync.
+
+1. **GitHub Pages** – `web/`-Inhalt in ein Repo pushen, Pages auf den Branch zeigen lassen.
+2. **Netlify Drop** – <https://app.netlify.com/drop>, `web/`-Ordner ins
+   Browserfenster ziehen. Anonyme Deploys verfallen nach ~1h ohne Account-Claim.
 
 ## CSV-Format
 
@@ -145,8 +183,8 @@ node tools\smoke-test.js
 ```
 
 Lädt `db.js` + `sync.js` + `app.js` aus `web/` in einen minimalen DOM-Stub und
-spielt Stempeln, Editieren, Nachtragen, Löschen, Absenz und beide
-CSV-Exporte durch – inklusive Offline-Sync-Pfad (der Server ist im Test
+spielt Stempeln, Editieren, Nachtragen, Löschen, Absenz, Profilwechsel und
+beide CSV-Exporte durch – inklusive Offline-Sync-Pfad (der Server ist im Test
 absichtlich nicht erreichbar, das ist Teil der Prüfung).
 
 ## Datenmodell
@@ -167,14 +205,20 @@ nicht angelegt).
 
 ## API (server/main.py)
 
+`{person}` ist der URL-sichere Slug des Profilnamens (`[a-z0-9-]{1,40}`,
+client-seitig aus dem eingegebenen Namen gebildet, siehe `web/sync.js`).
+
 | Methode | Pfad | Zweck |
 |---|---|---|
-| `GET` | `/api/days` | Alle Tage – für die Erstbefüllung eines leeren Geräts |
-| `GET` | `/api/days/{iso}` | Einzelner Tag |
-| `PUT` | `/api/days/{iso}` | Tag vollständig ersetzen (Upsert, kompletter Tagesdatensatz als Body) |
-| `DELETE` | `/api/days/{iso}` | Tag löschen |
+| `GET` | `/api/{person}/days` | Alle Tage einer Person – für die Erstbefüllung eines leeren Geräts |
+| `GET` | `/api/{person}/days/{iso}` | Einzelner Tag |
+| `PUT` | `/api/{person}/days/{iso}` | Tag vollständig ersetzen (Upsert, kompletter Tagesdatensatz als Body) |
+| `DELETE` | `/api/{person}/days/{iso}` | Tag löschen |
 
-Speicherung serverseitig in SQLite (`server/stempeluhr.db`, nicht in Git).
+Speicherung serverseitig in SQLite (`server/stempeluhr.db`, nicht in Git),
+Primärschlüssel `(person, iso)`. Ältere Alleinnutzer-Daten (vor der
+Mehrpersonen-Umstellung) werden beim ersten Start automatisch dem Profil
+`michael` zugeordnet.
 
 ## Deployment auf dem Pi
 

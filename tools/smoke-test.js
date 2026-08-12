@@ -110,6 +110,7 @@ const sandbox = {
   localStorage,
   confirm: () => true,
   alert: () => {},
+  prompt: () => 'TestUser', // einmalige Profil-Abfrage beim ersten Start -> Slug "testuser"
   navigator: {}, // kein serviceWorker, kein canShare -> Download-Pfad
   location: { protocol: 'http:', reload() {} },
   URL: {
@@ -190,7 +191,10 @@ function pressed(label) {
 
   // Sync: Server ist im Test absichtlich unerreichbar (fakeFetch wirft immer) ->
   // muss lokal trotzdem gespeichert bleiben und als "offline/ausstehend" markiert werden.
-  check('Stempel löst Server-Sync-Versuch aus', fetchCalls.some((c) => c.url === `/api/days/${todayIso()}`));
+  check(
+    'Stempel löst personenbezogenen Server-Sync-Versuch aus',
+    fetchCalls.some((c) => c.url === `/api/testuser/days/${todayIso()}`)
+  );
   check('Sync-Status zeigt offline bei nicht erreichbarem Server', els.syncRow.className.includes('offline'));
 
   await wait(950); // Doppeltipp-Sperre abwarten
@@ -277,6 +281,11 @@ function pressed(label) {
   await clickTab('monat');
   check('Monatsansicht rendert', html().includes('Total Monat') && html().includes('month-grid'));
   check('Monatsraster hat Punkte', html().includes('mdot work') || html().includes('mdot abs'));
+  check('Profil-Sektion zeigt aktuellen Namen', html().includes('TestUser'));
+
+  fetchCalls = [];
+  await clickAction({ action: 'change-person' }); // prompt-Stub liefert immer 'TestUser' -> identisch, kein neuer Sync-Aufruf
+  check('Profilname bleibt bei identischer Eingabe unverändert', html().includes('TestUser') && fetchCalls.length === 0);
 
   capturedBlob = null;
   await clickAction({ action: 'export', range: 'month' });

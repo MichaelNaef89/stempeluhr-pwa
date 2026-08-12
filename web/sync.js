@@ -2,10 +2,15 @@
    IndexedDB bleibt die primäre Datenquelle – jede Änderung wird zusätzlich
    sofort an den Server geschickt, sobald eine Verbindung besteht. Schlägt das
    fehl (offline, Server nicht erreichbar), merkt sich Sync das betroffene
-   Datum und holt es automatisch nach, sobald die Verbindung zurückkommt. */
+   Datum und holt es automatisch nach, sobald die Verbindung zurückkommt.
+
+   Mehrpersonenfähig über einen Profilnamen pro Gerät: jedes Gerät hat sein
+   eigenes /api/{person}/days – dadurch überschreiben sich zwei Personen auf
+   zwei Geräten nicht gegenseitig, auch wenn sie am selben Tag arbeiten. */
 
 const Sync = (() => {
   const PENDING_KEY = 'stempeluhr:pendingSync';
+  const PERSON_KEY = 'stempeluhr:person';
   const RETRY_MS = 20000;
 
   // Läuft die App nicht über den Pi (z.B. lokaler Testserver ohne /api),
@@ -14,6 +19,42 @@ const Sync = (() => {
 
   let getDay = null; // (iso) => Tagesobjekt, vom Aufrufer injiziert
   let onStatus = null; // (status, pendingCount) => void
+
+  function slugify(name) {
+    return (
+      (name || '')
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '') // Akzente entfernen (Trema-Zeichen nach NFKD-Zerlegung)
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'person'
+    );
+  }
+
+  function getPerson() {
+    try {
+      return localStorage.getItem(PERSON_KEY) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function setPerson(name) {
+    try {
+      localStorage.setItem(PERSON_KEY, (name || '').trim());
+    } catch {
+      /* ignorieren – Sync bleibt in diesem Fall inaktiv, App funktioniert weiter */
+    }
+  }
+
+  /** Basis-URL für die Tage-API dieses Geräts, oder null solange kein Profil gesetzt ist. */
+  function daysUrl(iso) {
+    const person = getPerson();
+    if (!person) return null;
+    const base = `/api/${slugify(person)}/days`;
+    return iso ? `${base}/${iso}` : base;
+  }
 
   function readPending() {
     try {
@@ -40,7 +81,9 @@ const Sync = (() => {
   }
 
   async function putDay(iso, data) {
-    const res = await fetch(`/api/days/${iso}`, {
+    const url = daysUrl(iso);
+    if (!url) throw new Error('kein Profil gesetzt');
+    const res = await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -96,13 +139,14 @@ const Sync = (() => {
     }
   }
 
-  /** Holt beim allerersten Start Server-Daten, falls das Gerät lokal noch
-   *  komplett leer ist (Neuinstallation, neues Handy). Überschreibt nie
-   *  vorhandene lokale Einträge. */
+  /** Holt beim allerersten Start Server-Daten dieses Profils, falls das Gerät
+   *  lokal noch komplett leer ist (Neuinstallation, neues Handy). Überschreibt
+   *  nie vorhandene lokale Einträge. */
   async function hydrateIfEmpty(isLocalEmpty, importDays) {
-    if (!enabled || !isLocalEmpty) return false;
+    const url = daysUrl();
+    if (!enabled || !isLocalEmpty || !url) return false;
     try {
-      const res = await fetch('/api/days');
+      const res = await fetch(url);
       if (!res.ok) return false;
       const days = await res.json();
       const n = Object.keys(days).length;
@@ -130,5 +174,5 @@ const Sync = (() => {
     }, RETRY_MS);
   }
 
-  return { init, push, flush, hydrateIfEmpty };
+  return { init, push, flush, hydrateIfEmpty, getPerson, setPerson };
 })();

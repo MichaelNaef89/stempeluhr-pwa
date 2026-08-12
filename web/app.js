@@ -488,12 +488,20 @@
       <button class="btn primary" data-action="export" data-range="month">${ICON.download} Monat als CSV</button>
       <button class="btn" data-action="copy" data-range="month">${ICON.copy} CSV in Zwischenablage</button>
       <div class="section">
+        <span class="label">Profil</span>
+        <div class="row list">
+          <div class="row-left"><span class="row-title">${esc(Sync.getPerson() || '–')}</span></div>
+          <div class="row-right"><button class="btn ghost" data-action="change-person">ändern</button></div>
+        </div>
+        <div class="hint">Bestimmt, unter welchem Bereich auf dem Server synchronisiert wird. Zwei Geräte mit unterschiedlichem Namen überschreiben sich nicht gegenseitig.</div>
+      </div>
+      <div class="section">
         <span class="label">Datensicherung</span>
         <div class="btn-row" style="margin-top:0">
           <button class="btn" data-action="backup-export">Backup speichern</button>
           <button class="btn" data-action="backup-import">Backup laden</button>
         </div>
-        <div class="hint">Alle Daten liegen nur auf diesem Gerät. Ein Backup als JSON schützt vor Datenverlust, wenn der Browser-Speicher gelöscht wird.</div>
+        <div class="hint">Primärspeicher ist dieses Gerät, jede Änderung wird zusätzlich automatisch auf den Server gespiegelt (siehe Sync-Status oben). Das JSON-Backup ist zusätzlich nützlich, um Daten auf ein komplett anderes Gerät zu übertragen.</div>
       </div>
       <input type="file" id="importFile" accept="application/json,.json" hidden>`;
   }
@@ -505,6 +513,7 @@
   const toastEl = document.getElementById('toast');
   const clockEl = document.getElementById('clock');
   const topbarDateEl = document.getElementById('topbarDate');
+  const eyebrowEl = document.getElementById('eyebrow');
   const syncRowEl = document.getElementById('syncRow');
   const syncLabelEl = document.getElementById('syncLabel');
 
@@ -556,6 +565,10 @@
       t.setAttribute('aria-selected', String(t.dataset.screen === state.screen));
     });
     topbarDateEl.textContent = fmtDateLabel(state.todayIso);
+    if (eyebrowEl) {
+      const person = Sync.getPerson();
+      eyebrowEl.textContent = person ? `Stempeluhr · ${person}` : 'Stempeluhr';
+    }
   }
 
   /** Lädt die Tage, die der Ziel-Screen braucht, und zeichnet neu. */
@@ -913,6 +926,17 @@
       case 'backup-import':
         document.getElementById('importFile')?.click();
         break;
+
+      case 'change-person': {
+        const current = Sync.getPerson() || '';
+        const next = (prompt('Neuer Profilname für dieses Gerät:', current) || '').trim();
+        if (next && next !== current) {
+          Sync.setPerson(next);
+          render();
+          toast(`Profil: ${next}`);
+        }
+        break;
+      }
     }
   }
 
@@ -1062,10 +1086,21 @@
 
   // ---------------------------------------------------------------- Start
 
+  /** Fragt beim allerersten Start dieses Geräts einmalig einen Profilnamen ab –
+   *  bestimmt, unter welchem Bereich auf dem Server synchronisiert wird, damit
+   *  zwei Personen auf zwei Geräten sich nicht gegenseitig überschreiben. */
+  function ensurePerson() {
+    if (Sync.getPerson()) return;
+    const name = (prompt('Wie heisst du? (für die eigene Zeiterfassung auf dem gemeinsamen Server)') || '').trim();
+    Sync.setPerson(name || 'Person');
+  }
+
   (async function init() {
     tickClock();
     setInterval(tickClock, 10000);
     setInterval(checkDayRollover, 60000);
+
+    ensurePerson();
 
     Sync.init({
       getDay: async (iso) => {
