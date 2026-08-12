@@ -61,7 +61,16 @@ const els = {
   toast: new FakeEl('div', 'toast'),
   clock: new FakeEl('div', 'clock'),
   topbarDate: new FakeEl('div', 'topbarDate'),
+  syncRow: new FakeEl('div', 'syncRow'),
+  syncLabel: new FakeEl('span', 'syncLabel'),
 };
+
+// Simuliert "kein Server erreichbar" – prüft damit gleich den Offline-Pfad von sync.js.
+let fetchCalls = [];
+async function fakeFetch(url, opts) {
+  fetchCalls.push({ url, opts });
+  throw new TypeError('Failed to fetch');
+}
 
 const store = new Map();
 const localStorage = {
@@ -96,6 +105,8 @@ const sandbox = {
   RegExp,
   Blob,
   File: typeof File !== 'undefined' ? File : undefined,
+  fetch: fakeFetch,
+  TypeError,
   localStorage,
   confirm: () => true,
   alert: () => {},
@@ -120,7 +131,9 @@ sandbox.window.addEventListener = () => {};
 sandbox.globalThis = sandbox;
 
 vm.createContext(sandbox);
-const source = ['db.js', 'app.js'].map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n;\n');
+const source = ['web/db.js', 'web/sync.js', 'web/app.js']
+  .map((f) => fs.readFileSync(path.join(root, f), 'utf8'))
+  .join('\n;\n');
 vm.runInContext(source, sandbox, { filename: 'app-bundle.js' });
 
 // ------------------------------------------------------------------ Helfer
@@ -174,6 +187,11 @@ function pressed(label) {
   await clickAction({ action: 'punch' });
   check('Kommt 1 erfasst', /Kommt 1<\/span>\s*<span class="badge">Werkstatt/.test(html()));
   check('Nächster Stempel ist Geht 1', html().includes('punch-title">Geht 1'));
+
+  // Sync: Server ist im Test absichtlich unerreichbar (fakeFetch wirft immer) ->
+  // muss lokal trotzdem gespeichert bleiben und als "offline/ausstehend" markiert werden.
+  check('Stempel löst Server-Sync-Versuch aus', fetchCalls.some((c) => c.url === `/api/days/${todayIso()}`));
+  check('Sync-Status zeigt offline bei nicht erreichbarem Server', els.syncRow.className.includes('offline'));
 
   await wait(950); // Doppeltipp-Sperre abwarten
   await clickAction({ action: 'punch' });

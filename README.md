@@ -1,8 +1,8 @@
 # Stempeluhr – PWA zur Arbeitszeiterfassung
 
 Installierbare Progressive Web App für Kommt/Geht-Stempel, Absenzen und CSV-Export.
-Läuft vollständig offline, alle Daten bleiben lokal auf dem Gerät (IndexedDB).
-Kein Build-Schritt, keine Abhängigkeiten – reines HTML/CSS/JS.
+Läuft vollständig offline (IndexedDB auf dem Gerät) und spiegelt jede Änderung
+automatisch auf einen kleinen Server, sobald eine Verbindung besteht.
 
 ## Funktionen
 
@@ -14,28 +14,68 @@ Kein Build-Schritt, keine Abhängigkeiten – reines HTML/CSS/JS.
 | **Woche** | Kalenderwoche (ISO), Stunden bzw. Absenz pro Tag, Tippen springt in die Tagesansicht, Wochentotal. |
 | **Monat** | Kalenderraster Mo–So mit Punkt je Tag (amber = gearbeitet, türkis = Absenz), Monatstotal. |
 | **Export** | CSV für Woche und Monat, Semikolon-getrennt mit BOM (öffnet in Excel de-CH direkt korrekt). |
+| **Sync** | Jede Änderung wird sofort ans Backend auf dem Pi geschickt; ohne Verbindung lokal gepuffert und automatisch nachgeholt. |
+
+## Architektur
+
+```
+web/       Die PWA selbst – HTML/CSS/JS, kein Build-Schritt
+server/    FastAPI-Backend: liefert web/ aus + kleine JSON-API unter /api
+tools/     Icon-Generator, Smoke-Test
+```
+
+**IndexedDB im Browser bleibt die primäre Datenquelle.** Stempeln, Editieren,
+Absenzen etc. funktionieren immer sofort und komplett offline – der Server ist
+ein automatisches Backup, kein Ersatz dafür. Nach jeder Änderung versucht
+[`web/sync.js`](web/sync.js) im Hintergrund, den betroffenen Tag per `PUT
+/api/days/{iso}` an den Server zu schicken. Schlägt das fehl (kein Netz, Pi
+nicht erreichbar), merkt sich `sync.js` das Datum in `localStorage` und
+versucht es automatisch erneut – bei jedem `online`-Event, beim
+Zurückkommen in den Vordergrund und zusätzlich alle 20 Sekunden, solange noch
+etwas offen ist. Ein kleiner Punkt oben rechts neben der Uhr zeigt den
+Sync-Status (gesichert / sync… / offline · n ausstehend).
+
+Ist die lokale Datenbank beim Start komplett leer (Neuinstallation, neues
+Gerät), holt die App einmalig alle Tage vom Server nach (`GET /api/days`) –
+das deckt den Fall „Handy verloren/zurückgesetzt" ab, ohne dass ein manuelles
+Backup nötig ist.
+
+Kein Login: der Zugriffsschutz ist das Tailscale-Netz selbst (gleiches Modell
+wie beim Familien-Dashboard) – wer keinen Zugriff auf das Tailnet hat, kommt
+weder an die Seite noch an die API.
 
 ## Lokal testen
 
 ```powershell
-cd C:\Users\micha\stempeluhr-pwa
-python -m http.server 8000
+cd C:\Users\micha\stempeluhr-pwa\server
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
 ```
 
 Dann `http://localhost:8000/` im Browser öffnen. `localhost` gilt als sicherer
-Kontext – Service Worker und Installation funktionieren dort bereits.
+Kontext – Service Worker und Installation funktionieren dort bereits, `/api`
+läuft automatisch mit.
+
+Ohne Backend (nur Frontend ansehen) reicht auch weiterhin:
+
+```powershell
+cd C:\Users\micha\stempeluhr-pwa\web
+python -m http.server 8000
+```
+
+Dann läuft die App normal, Sync bleibt einfach dauerhaft „offline" (unschädlich).
 
 ## Auf dem Samsung-Handy installieren
 
-Der Service Worker verlangt **HTTPS** (Ausnahme: `localhost`). Über die reine
-LAN-IP (`http://192.168.x.x:8000`) lädt die App zwar, ist aber nicht offline-
-fähig installierbar. Praktische Wege, eine HTTPS-URL zu bekommen:
+Der Service Worker verlangt **HTTPS** (Ausnahme: `localhost`). Aktuell läuft
+das über `tailscale serve` auf dem Pi – siehe *Deployment* unten. Ohne Pi
+funktionieren auch die Fallback-Wege:
 
-1. **GitHub Pages** – Ordnerinhalt in ein Repo pushen, Pages auf den Branch
-   zeigen lassen, die `https://…github.io/…`-URL auf dem Handy öffnen.
-2. **Netlify Drop** – <https://app.netlify.com/drop>, Ordner ins Browserfenster
-   ziehen, fertige HTTPS-URL verwenden.
-3. **Eigener Webspace** – Ordner per FTP in ein Verzeichnis mit HTTPS legen.
+1. **GitHub Pages** – `web/`-Inhalt in ein Repo pushen, Pages auf den Branch
+   zeigen lassen (dann läuft nur das Frontend, ohne Server-Sync).
+2. **Netlify Drop** – <https://app.netlify.com/drop>, `web/`-Ordner ins
+   Browserfenster ziehen. Anonyme Deploys verfallen nach ~1h ohne
+   Account-Claim.
 
 Die URL dann auf dem Samsung-Gerät öffnen:
 
@@ -47,14 +87,7 @@ Die URL dann auf dem Samsung-Gerät öffnen:
   je nach Version).
 
 Beide Browser erkennen `manifest.json` + Service Worker automatisch und bieten
-die Installation von selbst an – ein manuelles „Zum Startbildschirm“ wie bei
-iOS ist nicht nötig, funktioniert aber genauso als Fallback.
-
-Auf dem iPhone dann in **Safari** öffnen → Teilen-Symbol → *Zum Home-Bildschirm*.
-Die App startet danach im Vollbild ohne Safari-Leiste.
-
-> Wichtig: Nur Safari kann auf iOS zum Home-Bildschirm hinzufügen – Chrome/Firefox
-> auf dem iPhone können das nicht.
+die Installation von selbst an.
 
 ## CSV-Format
 
@@ -71,32 +104,38 @@ Datum;Kommt 1;Geht 1;Kommt 2;Geht 2;Kommt 3;Geht 3;Kommt 4;Geht 4;bezahlte Abwes
 - Semikolon und Zeilenumbrüche in der Bemerkung werden entschärft, damit die
   Spalten nicht verrutschen
 
-Auf dem iPhone öffnet der Export das Teilen-Menü (Datei sichern, mailen …).
+Export öffnet auf dem Handy das Teilen-Menü (Datei sichern, mailen …).
 Alternativ legt „CSV in Zwischenablage" den Text direkt zum Einfügen bereit.
 
 ## Daten und Backup
 
-Alle Einträge liegen ausschliesslich lokal in der IndexedDB des Browsers
-(Fallback: `localStorage`). Kein Server, kein Konto, keine Übertragung.
+Primärspeicher ist die IndexedDB auf dem Gerät (Fallback: `localStorage`).
+Jede Änderung wird zusätzlich automatisch auf den Pi gespiegelt (siehe
+*Architektur* oben) – das ist der eigentliche Backup-Mechanismus im
+Alltagsbetrieb.
 
-Das heisst aber auch: Wenn iOS den Website-Speicher aufräumt oder der Browser-
-Speicher gelöscht wird, sind die Daten weg. Unter **Monat → Datensicherung**
-lässt sich deshalb ein JSON-Backup speichern und wieder einspielen. Nach der
-Installation auf dem Home-Bildschirm behandelt iOS die Daten deutlich
-beständiger als in einem normalen Safari-Tab.
+Zusätzlich lässt sich unter **Monat → Datensicherung** jederzeit ein
+manuelles JSON-Backup exportieren/importieren – nützlich, um Daten auf ein
+komplett anderes Gerät zu übertragen oder ausserhalb des Tailnets zu sichern.
 
 ## Dateien
 
 ```
-index.html                App-Shell und Grundgerüst
-styles.css                Dunkles, industrielles Design
-app.js                    Zustand, Rendering, Aktionen, CSV
-db.js                     IndexedDB-Zugriff (+ localStorage-Fallback)
-sw.js                     Service Worker (Offline-Cache)
-manifest.json             PWA-Manifest
-icons/                    App-Icons (192, 512, maskable, favicon)
-tools/make_icons.py       Erzeugt die Icons neu (benötigt Pillow)
-tools/smoke-test.js       Durchläuft die App-Logik in einem DOM-Stub
+web/
+  index.html                App-Shell und Grundgerüst
+  styles.css                Dunkles, industrielles Design
+  app.js                    Zustand, Rendering, Aktionen, CSV
+  db.js                     IndexedDB-Zugriff (+ localStorage-Fallback)
+  sync.js                   Automatischer Server-Sync mit Offline-Warteschlange
+  sw.js                     Service Worker (Offline-Cache, lässt /api/* durch)
+  manifest.json              PWA-Manifest
+  icons/                     App-Icons (192, 512, maskable, favicon)
+server/
+  main.py                    FastAPI: liefert web/ aus + /api/days
+  requirements.txt
+tools/
+  make_icons.py              Erzeugt die Icons neu (benötigt Pillow)
+  smoke-test.js               Durchläuft die App-Logik in einem DOM-Stub
 ```
 
 ## Tests
@@ -105,8 +144,10 @@ tools/smoke-test.js       Durchläuft die App-Logik in einem DOM-Stub
 node tools\smoke-test.js
 ```
 
-Lädt `db.js` + `app.js` in einen minimalen DOM-Stub und spielt Stempeln,
-Editieren, Nachtragen, Löschen, Absenz und beide CSV-Exporte durch (36 Checks).
+Lädt `db.js` + `sync.js` + `app.js` aus `web/` in einen minimalen DOM-Stub und
+spielt Stempeln, Editieren, Nachtragen, Löschen, Absenz und beide
+CSV-Exporte durch – inklusive Offline-Sync-Pfad (der Server ist im Test
+absichtlich nicht erreichbar, das ist Teil der Prüfung).
 
 ## Datenmodell
 
@@ -121,13 +162,34 @@ Ein Record pro Tag, Key = ISO-Datum (`YYYY-MM-DD`):
 }
 ```
 
-Leere Tage werden nicht gespeichert.
+Leere Tage werden lokal nicht gespeichert (serverseitig entsprechend auch
+nicht angelegt).
+
+## API (server/main.py)
+
+| Methode | Pfad | Zweck |
+|---|---|---|
+| `GET` | `/api/days` | Alle Tage – für die Erstbefüllung eines leeren Geräts |
+| `GET` | `/api/days/{iso}` | Einzelner Tag |
+| `PUT` | `/api/days/{iso}` | Tag vollständig ersetzen (Upsert, kompletter Tagesdatensatz als Body) |
+| `DELETE` | `/api/days/{iso}` | Tag löschen |
+
+Speicherung serverseitig in SQLite (`server/stempeluhr.db`, nicht in Git).
 
 ## Deployment auf dem Pi
 
 - **Repo**: <https://github.com/MichaelNaef89/stempeluhr-pwa> (öffentlich, keine Secrets enthalten)
-- **Pi5**: `/home/pi/stempeluhr-pwa`, Dienst `stempeluhr-pwa.service` (statischer Python-Server auf Port 8002, nur `127.0.0.1`)
+- **Pi5**: `/home/pi/stempeluhr-pwa`, venv unter `/home/pi/stempeluhr-pwa/venv`
+- **Dienst**: `stempeluhr-pwa.service` → `venv/bin/uvicorn server.main:app --host 127.0.0.1 --port 8002`
 - **HTTPS**: `tailscale serve` proxyt Port 8002 auf `https://pi5.tail0fe4c7.ts.net/`
-- **Workflow**: PC → `git push` → Pi: `cd /home/pi/stempeluhr-pwa && git pull && sudo systemctl restart stempeluhr-pwa.service`
-  (Neustart ist bei reinen HTML/CSS/JS-Änderungen eigentlich nicht nötig, da `python -m http.server`
-  Dateien live von der Platte liest – schadet aber nicht.)
+- **Workflow**:
+  ```bash
+  # auf dem PC
+  git push
+
+  # auf dem Pi
+  cd /home/pi/stempeluhr-pwa
+  git pull
+  venv/bin/pip install -r server/requirements.txt   # nur nötig, wenn sich requirements.txt geändert hat
+  sudo systemctl restart stempeluhr-pwa.service
+  ```

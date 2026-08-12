@@ -1,6 +1,6 @@
 /* Service Worker – App-Shell Cache, damit die App komplett offline läuft. */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `stempeluhr-shell-${VERSION}`;
 const FONT_CACHE = `stempeluhr-fonts-${VERSION}`;
 
@@ -9,6 +9,7 @@ const SHELL = [
   './index.html',
   './styles.css',
   './db.js',
+  './sync.js',
   './app.js',
   './manifest.json',
   './icons/icon-192.png',
@@ -70,6 +71,10 @@ self.addEventListener('fetch', (event) => {
 
   // Nur eigene Origin behandeln.
   if (url.origin !== self.location.origin) return;
+
+  // API-Aufrufe nie cachen – die brauchen immer den aktuellen Server-Stand
+  // (bzw. sollen bei fehlender Verbindung einfach fehlschlagen, das übernimmt sync.js).
+  if (url.pathname.startsWith('/api/')) return;
 
   // Navigationen: Netz zuerst (für Updates), Fallback auf gecachte index.html.
   if (req.mode === 'navigate') {

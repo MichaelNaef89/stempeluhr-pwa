@@ -14,7 +14,7 @@ TICK = (138, 141, 146)
 HAND = (232, 163, 61)
 TEAL = (79, 184, 168)
 
-OUT = Path(__file__).resolve().parent.parent / "icons"
+OUT = Path(__file__).resolve().parent.parent / "web" / "icons"
 SS = 4  # Supersampling für weiche Kanten
 
 

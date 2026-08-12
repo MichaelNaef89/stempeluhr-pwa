@@ -153,6 +153,7 @@
   async function saveDay(iso, data) {
     state.cache[iso] = data;
     await DB.putDay(iso, data);
+    Sync.push(iso, data); // im Hintergrund, blockiert die UI nicht
   }
 
   async function updateDay(iso, updater) {
@@ -176,7 +177,11 @@
     clearTimeout(saveTimer);
     const isos = Array.from(dirty);
     dirty.clear();
-    for (const iso of isos) await DB.putDay(iso, getDay(iso));
+    for (const iso of isos) {
+      const data = getDay(iso);
+      await DB.putDay(iso, data);
+      Sync.push(iso, data);
+    }
   }
 
   // ---------------------------------------------------------------- Icons
@@ -500,6 +505,23 @@
   const toastEl = document.getElementById('toast');
   const clockEl = document.getElementById('clock');
   const topbarDateEl = document.getElementById('topbarDate');
+  const syncRowEl = document.getElementById('syncRow');
+  const syncLabelEl = document.getElementById('syncLabel');
+
+  const SYNC_LABELS = {
+    synced: 'gesichert',
+    syncing: 'sync…',
+    pending: (n) => `${n} ausstehend`,
+    offline: (n) => (n ? `offline · ${n}` : 'offline'),
+  };
+
+  function updateSyncUI(status, pendingCount) {
+    if (!syncRowEl) return;
+    syncRowEl.hidden = false;
+    syncRowEl.className = `syncrow ${status}`;
+    const label = SYNC_LABELS[status];
+    syncLabelEl.textContent = typeof label === 'function' ? label(pendingCount) : label || '';
+  }
 
   const RENDERERS = { stempeln: renderStempeln, tag: renderTag, woche: renderWoche, monat: renderMonat };
 
@@ -1044,6 +1066,19 @@
     tickClock();
     setInterval(tickClock, 10000);
     setInterval(checkDayRollover, 60000);
+
+    Sync.init({
+      getDay: async (iso) => {
+        await ensureDays([iso]);
+        return getDay(iso);
+      },
+      onStatus: updateSyncUI,
+    });
+
+    // Neuinstallation / neues Gerät: lokale DB ist leer -> vom Server befüllen.
+    const existing = await DB.allDays();
+    const hydrated = await Sync.hydrateIfEmpty(Object.keys(existing).length === 0, DB.importDays);
+    if (hydrated) state.cache = Object.create(null);
 
     await ensureDays([state.todayIso]);
     state.mode = getDay(state.todayIso).abwesenheitStd ? 'absence' : 'punch';

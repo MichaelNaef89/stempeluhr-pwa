@@ -34,7 +34,12 @@
         <div class="eyebrow">Stempeluhr</div>
         <div class="topbar-date" id="topbarDate">–</div>
       </div>
-      <div class="clock" id="clock">--:--</div>
+      <div class="topbar-right">
+        <div class="clock" id="clock">--:--</div>
+        <div class="syncrow" id="syncRow" title="Server-Sync" hidden>
+          <span class="syncdot" id="syncDot"></span><span id="syncLabel"></span>
+        </div>
+      </div>
     </header>
 
     <main id="screen" class="screen" aria-live="polite">
@@ -72,6 +77,7 @@
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
     <script src="./db.js"></script>
+    <script src="./sync.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

@@ -104,6 +104,13 @@ select {
   margin-top: 2px;
 }
 
+.topbar-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
 .clock {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -112,6 +119,42 @@ select {
   line-height: 1;
   color: var(--amber);
   letter-spacing: -0.01em;
+}
+
+.syncrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+
+.syncdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dim);
+  flex: none;
+  transition: background 0.2s;
+}
+
+.syncrow.synced .syncdot {
+  background: var(--teal);
+}
+.syncrow.syncing .syncdot {
+  background: var(--amber);
+  animation: syncpulse 1s ease-in-out infinite;
+}
+.syncrow.pending .syncdot,
+.syncrow.offline .syncdot {
+  background: var(--amber);
+}
+
+@keyframes syncpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 /* ---------- Screen ---------- */
