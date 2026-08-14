@@ -1,6 +1,6 @@
 /* Service Worker – App-Shell Cache, damit die App komplett offline läuft. */
 
-const VERSION = 'v4';
+const VERSION = 'v5';
 const SHELL_CACHE = `stempeluhr-shell-${VERSION}`;
 const FONT_CACHE = `stempeluhr-fonts-${VERSION}`;
 

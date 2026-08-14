@@ -87,6 +87,7 @@ const sandbox = {
   console,
   setTimeout,
   clearTimeout,
+  AbortController,
   setInterval: () => 0, // Uhr-Ticks im Test nicht laufen lassen
   clearInterval: () => {},
   requestAnimationFrame: (cb) => cb(),

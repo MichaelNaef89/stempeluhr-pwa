@@ -80,10 +80,26 @@ const Sync = (() => {
     if (onStatus) onStatus(status, pending.size);
   }
 
+  const FETCH_TIMEOUT_MS = 10000;
+
+  /** fetch() hat von sich aus keinen Timeout – eine hängende Verbindung (mobiles
+   *  Netz, Tailscale-Verbindungsaufbau o.ä.) würde sonst für immer auf eine
+   *  Antwort warten und den ganzen Sync-Vorgang lautlos blockieren, ohne dass
+   *  je ein Fehler oder Erfolg gemeldet wird. */
+  async function fetchWithTimeout(url, opts) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      return await fetch(url, { ...opts, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function putDay(iso, data) {
     const url = daysUrl(iso);
     if (!url) throw new Error('kein Profil gesetzt');
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -175,7 +191,7 @@ const Sync = (() => {
     const url = daysUrl();
     if (!enabled || !isLocalEmpty || !url) return false;
     try {
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) return false;
       const days = await res.json();
       const n = Object.keys(days).length;
