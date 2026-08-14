@@ -191,7 +191,10 @@ def main() -> int:
 
     if not args.no_backup:
         stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-        backup_path = path.with_name(f"{path.name}.backup-{stamp}")
+        # Zeitstempel VOR die Endung setzen, damit die Datei ".xlsx" bleibt und
+        # Windows/Excel sie weiterhin als Excel-Datei erkennt (Doppelklick öffnet
+        # sie direkt, statt als unbekannten Dateityp "BACKUP-...-Datei").
+        backup_path = path.with_name(f"{path.stem}.backup-{stamp}{path.suffix}")
         shutil.copy2(path, backup_path)
         print(f"\nBackup gespeichert: {backup_path}")
 
