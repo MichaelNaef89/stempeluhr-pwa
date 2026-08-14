@@ -292,6 +292,22 @@ function pressed(label) {
   const mcsv = capturedBlob ? await capturedBlob.text() : '';
   check('Monats-CSV erzeugt', mcsv.split('\r\n').length >= 29);
 
+  // "Vollständig synchronisieren" muss wirklich JEDEN lokal gespeicherten Tag
+  // an den Server schicken, nicht nur die zuletzt geänderten (das war die
+  // Lücke, die dazu führte, dass alte, vor-Sync erfasste Tage nie ankamen).
+  fetchCalls = [];
+  await clickAction({ action: 'sync-all' });
+  await settle();
+  const syncedIsos = new Set(
+    fetchCalls.filter((c) => c.opts && c.opts.method === 'PUT').map((c) => c.url.split('/').pop())
+  );
+  const storedDayCount = Array.from(store.keys()).filter((k) => k.startsWith('stempeluhr:day:')).length;
+  check(
+    'Vollständig synchronisieren erreicht alle gespeicherten Tage',
+    syncedIsos.size === storedDayCount,
+    `${syncedIsos.size} von ${storedDayCount}`
+  );
+
   // Löschen
   await clickTab('tag');
   await clickAction({ action: 'goday', iso: todayIso() });

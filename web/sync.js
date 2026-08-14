@@ -139,6 +139,35 @@ const Sync = (() => {
     }
   }
 
+  /** Schickt wirklich ALLE übergebenen Tage an den Server, nicht nur die als
+   *  "pending" vorgemerkten. Für die einmalige Nachholung von Tagen, die
+   *  entstanden sind, bevor es Sync überhaupt gab (oder während Sync deaktiviert
+   *  war) – die laufen sonst nie automatisch nach, weil Sync nur bei tatsächlichen
+   *  Änderungen aktiv wird, nicht beim blossen Anzeigen alter Tage. */
+  async function pushAll(allDays) {
+    if (!enabled) return { ok: 0, failed: 0 };
+    let ok = 0;
+    let failed = 0;
+    for (const [iso, data] of Object.entries(allDays)) {
+      try {
+        await putDay(iso, data);
+        pending.delete(iso);
+        ok++;
+      } catch {
+        pending.add(iso);
+        failed++;
+      }
+    }
+    writePending(pending);
+    if (pending.size) {
+      report('offline');
+      scheduleRetry();
+    } else {
+      report('synced');
+    }
+    return { ok, failed };
+  }
+
   /** Holt beim allerersten Start Server-Daten dieses Profils, falls das Gerät
    *  lokal noch komplett leer ist (Neuinstallation, neues Handy). Überschreibt
    *  nie vorhandene lokale Einträge. */
@@ -174,5 +203,5 @@ const Sync = (() => {
     }, RETRY_MS);
   }
 
-  return { init, push, flush, hydrateIfEmpty, getPerson, setPerson };
+  return { init, push, flush, pushAll, hydrateIfEmpty, getPerson, setPerson };
 })();

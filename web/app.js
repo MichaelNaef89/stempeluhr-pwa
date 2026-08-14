@@ -504,7 +504,8 @@
           <button class="btn" data-action="backup-export">Backup speichern</button>
           <button class="btn" data-action="backup-import">Backup laden</button>
         </div>
-        <div class="hint">Primärspeicher ist dieses Gerät, jede Änderung wird zusätzlich automatisch auf den Server gespiegelt (siehe Sync-Status oben). Das JSON-Backup ist zusätzlich nützlich, um Daten auf ein komplett anderes Gerät zu übertragen.</div>
+        <button class="btn dashed" data-action="sync-all">Vollständig synchronisieren</button>
+        <div class="hint">Primärspeicher ist dieses Gerät, jede Änderung wird zusätzlich automatisch auf den Server gespiegelt (siehe Sync-Status oben). "Vollständig synchronisieren" schickt wirklich alle auf diesem Gerät gespeicherten Tage an den Server – nützlich für Einträge, die vor dem Einschalten von Sync oder ohne Verbindung entstanden sind. Das JSON-Backup ist zusätzlich nützlich, um Daten auf ein komplett anderes Gerät zu übertragen.</div>
       </div>
       <input type="file" id="importFile" accept="application/json,.json" hidden>`;
   }
@@ -929,6 +930,24 @@
       case 'backup-import':
         document.getElementById('importFile')?.click();
         break;
+
+      case 'sync-all': {
+        const all = await DB.allDays();
+        const n = Object.keys(all).length;
+        if (!n) {
+          toast('Keine lokalen Daten vorhanden');
+          break;
+        }
+        toast(`Synchronisiere ${n} Tage…`);
+        const result = await Sync.pushAll(all);
+        render();
+        toast(
+          result.failed
+            ? `${result.ok} synchronisiert, ${result.failed} fehlgeschlagen (später erneut versucht)`
+            : `${result.ok} Tage synchronisiert`
+        );
+        break;
+      }
 
       case 'change-person': {
         const current = Sync.getPerson() || '';
