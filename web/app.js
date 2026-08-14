@@ -8,7 +8,10 @@
   // ---------------------------------------------------------------- Konstanten
 
   const WORK_CATEGORIES = ['Büro', 'Garantie', 'Werkstatt', 'Testen', 'Testevents', 'Sonstiges'];
-  const ABSENCE_REASONS = ['Ferien', 'Krankheit', 'Feiertag', 'Unfall', 'Sonstiges'];
+  // Muss exakt der Dropdown-Liste (Spalte P) in der institutionellen Excel-
+  // Arbeitszeiterfassung entsprechen, sonst schlägt der 1:1-Übertrag fehl.
+  // "Feiertag" entfällt bewusst: Feiertage berechnet die Excel-Vorlage selbst.
+  const ABSENCE_REASONS = ['Ferien', 'krank', 'Unfall', 'geschäftlich', "Weiterbild'g"];
   const WEEKDAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
   const MONTHS = [
     'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
