@@ -59,7 +59,7 @@ nur eine Datenraum-Trennung.
 ## Lokal testen
 
 ```powershell
-cd C:\Users\micha\stempeluhr-pwa\server
+cd "C:\Users\micha\Desktop\Privat\Ensis\Zeiterfassung\Software Zeitstempel\server"
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
@@ -71,7 +71,7 @@ läuft automatisch mit.
 Ohne Backend (nur Frontend ansehen) reicht auch weiterhin:
 
 ```powershell
-cd C:\Users\micha\stempeluhr-pwa\web
+cd "C:\Users\micha\Desktop\Privat\Ensis\Zeiterfassung\Software Zeitstempel\web"
 python -m http.server 8000
 ```
 
