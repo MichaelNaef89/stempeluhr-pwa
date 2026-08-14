@@ -12,6 +12,15 @@ const DB = (() => {
   let dbPromise = null;
   let useFallback = false;
 
+  function isEmptyDay(data) {
+    return (
+      (!data.punches || data.punches.length === 0) &&
+      !data.abwesenheitStd &&
+      !data.abwesenheitGrund &&
+      !(data.bemerkung || '').trim()
+    );
+  }
+
   function open() {
     if (useFallback) return Promise.reject(new Error('fallback'));
     if (dbPromise) return dbPromise;
@@ -110,11 +119,7 @@ const DB = (() => {
 
     /** Einen Tag schreiben. Leere Tage werden gelöscht, damit die DB sauber bleibt. */
     async putDay(iso, data) {
-      const empty =
-        (!data.punches || data.punches.length === 0) &&
-        !data.abwesenheitStd &&
-        !data.abwesenheitGrund &&
-        !(data.bemerkung || '').trim();
+      const empty = isEmptyDay(data);
       try {
         await tx('readwrite', (s) => (empty ? s.delete(iso) : s.put(data, iso)));
       } catch {
@@ -184,5 +189,7 @@ const DB = (() => {
       }
       return entries.length;
     },
+
+    isEmptyDay,
   };
 })();

@@ -108,29 +108,25 @@ def main() -> int:
         print("  (keine)")
         return 0
 
-    # Berechnung!A3 (Jahr) ist eine Formel (=Basisangaben!E6) – für den Wert
-    # brauchen wir die gecachten Ergebnisse (data_only=True), fürs Schreiben
-    # dagegen ein zweites, formelerhaltendes Workbook (sonst gehen beim
-    # Speichern alle Formeln verloren).
-    wb_values = openpyxl.load_workbook(path, data_only=True)
-    if "Berechnung" not in wb_values.sheetnames:
-        print("Tabellenblatt 'Berechnung' (enthält das Jahr) nicht gefunden.", file=sys.stderr)
-        return 1
-    sheet_year = wb_values["Berechnung"]["A3"].value
-    if not isinstance(sheet_year, int):
-        print(
-            f"Konnte Jahr nicht aus Berechnung!A3 lesen (Wert: {sheet_year!r}). "
-            "Datei evtl. noch nie in Excel berechnet/gespeichert worden?",
-            file=sys.stderr,
-        )
-        return 1
-    print(f"\nExcel-Datei ist für Jahr {sheet_year} aufgebaut.")
-
     wb = openpyxl.load_workbook(path)  # data_only=False (Standard) -> Formeln bleiben erhalten
     if SHEET not in wb.sheetnames:
         print(f"Tabellenblatt '{SHEET}' nicht gefunden. Vorhanden: {wb.sheetnames}", file=sys.stderr)
         return 1
     ws = wb[SHEET]
+
+    # Jahr aus Basisangaben!E6 lesen – ein vom Nutzer direkt eingetragener Wert
+    # ("Sollarbeitszeitliste für das Jahr"), keine Formel. Bewusst NICHT über
+    # Berechnung!A3 (=Formel =Basisangaben!E6): deren gecachtes Ergebnis geht
+    # bei jedem openpyxl-Speichervorgang verloren (openpyxl berechnet keine
+    # Formeln neu), Excel füllt es erst beim nächsten echten Öffnen wieder auf.
+    if "Basisangaben" not in wb.sheetnames:
+        print("Tabellenblatt 'Basisangaben' (enthält das Jahr) nicht gefunden.", file=sys.stderr)
+        return 1
+    sheet_year = wb["Basisangaben"]["E6"].value
+    if not isinstance(sheet_year, int):
+        print(f"Konnte Jahr nicht aus Basisangaben!E6 lesen (Wert: {sheet_year!r}).", file=sys.stderr)
+        return 1
+    print(f"\nExcel-Datei ist für Jahr {sheet_year} aufgebaut.")
 
     written, skipped_year, warnings_grund = [], [], []
 

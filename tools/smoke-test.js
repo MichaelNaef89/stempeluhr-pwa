@@ -320,6 +320,25 @@ function pressed(label) {
   // Persistenz
   check('Daten im Speicher abgelegt', store.size >= 2, `${store.size} Tage`);
 
+  // Wird ein Tag durch Löschen wieder komplett leer, muss der Server einen
+  // DELETE bekommen statt eines leeren PUT (das war der Bug, der Karteileichen
+  // wie ein leeres 2026-08-10 auf dem Server hinterliess).
+  const freshIso = '2026-12-25';
+  await clickAction({ action: 'goday', iso: freshIso });
+  await clickAction({ action: 'add-open', iso: freshIso });
+  await clickAction({ action: 'add-cat', value: 'Sonstiges' });
+  els.addTime = new FakeEl('input', 'addTime');
+  els.addTime.value = '09:00';
+  await clickAction({ action: 'add-save', iso: freshIso });
+  fetchCalls = [];
+  await clickAction({ action: 'delete', iso: freshIso, idx: '0' });
+  const lastCallForFreshIso = fetchCalls.filter((c) => c.url.endsWith(`/days/${freshIso}`)).pop();
+  check(
+    'Leer werdender Tag löst DELETE statt leerem PUT aus',
+    !!lastCallForFreshIso && lastCallForFreshIso.opts.method === 'DELETE',
+    lastCallForFreshIso ? lastCallForFreshIso.opts.method : 'kein Aufruf'
+  );
+
   // ---------------------------------------------------------------- Ausgabe
   console.log('');
   results.forEach((r) => {

@@ -107,11 +107,23 @@ const Sync = (() => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   }
 
-  /** Schickt einen geänderten Tag sofort an den Server; merkt ihn bei Fehlschlag vor. */
+  async function removeDay(iso) {
+    const url = daysUrl(iso);
+    if (!url) throw new Error('kein Profil gesetzt');
+    const res = await fetchWithTimeout(url, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  }
+
+  /** Schickt einen geänderten Tag sofort an den Server; merkt ihn bei Fehlschlag vor.
+   *  Wird ein Tag durch Löschen aller Einträge leer (siehe DB.isEmptyDay), räumt
+   *  das den Server-Eintrag per DELETE weg, statt einen leeren Datensatz zu
+   *  hinterlassen – IndexedDB löscht leere Tage lokal ja ebenfalls. */
   async function push(iso, data) {
     if (!enabled) return;
+    const isEmpty = typeof DB !== 'undefined' && DB.isEmptyDay(data);
     try {
-      await putDay(iso, data);
+      if (isEmpty) await removeDay(iso);
+      else await putDay(iso, data);
       if (pending.delete(iso)) writePending(pending);
       report(pending.size ? 'pending' : 'synced');
     } catch {
@@ -139,7 +151,8 @@ const Sync = (() => {
     for (const iso of todo) {
       try {
         const data = await getDay(iso); // getDay darf sync oder async sein
-        await putDay(iso, data);
+        if (typeof DB !== 'undefined' && DB.isEmptyDay(data)) await removeDay(iso);
+        else await putDay(iso, data);
         pending.delete(iso);
         writePending(pending);
       } catch {
