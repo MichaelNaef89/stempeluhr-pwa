@@ -37,6 +37,14 @@
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
+  /** Rundet eine "HH:MM"-Zeit auf den nächsten 15-Minuten-Schritt (00/15/30/45). */
+  function roundToQuarterHour(hhmm) {
+    const [h, m] = hhmm.split(':').map(Number);
+    let total = Math.round((h * 60 + m) / 15) * 15;
+    total = ((total % 1440) + 1440) % 1440; // Mitternachts-Überlauf abfangen
+    return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+  }
+
   function fmtDateLabel(iso) {
     const d = fromIso(iso);
     return `${WEEKDAYS[d.getDay()]}, ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
@@ -233,7 +241,7 @@
         const nr = Math.floor(idx / 2) + 1;
         const isEditing = state.editing && state.editing.iso === iso && state.editing.idx === idx;
         const right = isEditing
-          ? `<input class="input time-input" type="time" id="editTime" value="${esc(p.time)}" data-role="edit-time">
+          ? `<input class="input time-input" type="time" id="editTime" step="900" value="${esc(p.time)}" data-role="edit-time">
              <button class="iconbtn ok" data-action="edit-save" data-iso="${iso}" data-idx="${idx}" aria-label="Speichern">${ICON.checkPlain}</button>
              <button class="iconbtn cancel" data-action="edit-cancel" aria-label="Abbrechen">${ICON.x}</button>`
           : `<span class="time">${esc(p.time)}</span>
@@ -295,7 +303,7 @@
       ${nextType === 'Kommt' ? chips(WORK_CATEGORIES, cat, 'add-cat') : ''}
       <div class="field">
         <label class="label" for="addTime">Uhrzeit</label>
-        <input class="input mono" id="addTime" type="time" value="${esc(state.addForm.time || '')}" data-role="add-time">
+        <input class="input mono" id="addTime" type="time" step="900" value="${esc(state.addForm.time || '')}" data-role="add-time">
       </div>
       <div class="btn-row">
         <button class="btn primary" data-action="add-save" data-iso="${iso}">Speichern</button>
@@ -1032,6 +1040,14 @@
     if (e.target.id === 'importFile' && e.target.files && e.target.files[0]) {
       backupImport(e.target.files[0]);
       e.target.value = '';
+      return;
+    }
+    // Absicherung falls ein Browser das step="900"-Attribut im Zeit-Picker
+    // ignoriert (z.B. am Desktop): auf 15-Minuten-Schritte runden.
+    if (e.target.type === 'time' && e.target.value) {
+      const rounded = roundToQuarterHour(e.target.value);
+      if (rounded !== e.target.value) e.target.value = rounded;
+      if (e.target.dataset.role === 'add-time' && state.addForm) state.addForm.time = rounded;
     }
   });
 
