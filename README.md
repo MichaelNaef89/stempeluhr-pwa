@@ -9,7 +9,7 @@ automatisch auf einen kleinen Server, sobald eine Verbindung besteht.
 | Bereich | Details |
 |---|---|
 | **Stempeln** | Grosser Button, erkennt automatisch Kommt/Geht, max. 4 Paare pro Tag. Vor jedem „Kommt" ist eine Tätigkeit Pflicht (Büro, Garantie, Werkstatt, Testen, Testevents, Sonstiges). |
-| **Absenz** | Umschalter auf dem Startbildschirm: Stundenzahl + Grund (Ferien, Krankheit, Feiertag, Unfall, Sonstiges). |
+| **Absenz** | Umschalter auf dem Startbildschirm: Stundenzahl + Grund (Ferien, krank, Unfall, geschäftlich, Weiterbild'g – exakt die Dropdown-Liste der Excel-Vorlage). |
 | **Tag** | Beliebiges Datum per Pfeilen, jeder Eintrag editier- und löschbar, „+ nachtragen" für vergessene Stempel an **jedem** Tag, Absenz und Bemerkung pro Tag. |
 | **Woche** | Kalenderwoche (ISO), Stunden bzw. Absenz pro Tag, Tippen springt in die Tagesansicht, Wochentotal. |
 | **Monat** | Kalenderraster Mo–So mit Punkt je Tag (amber = gearbeitet, türkis = Absenz), Monatstotal. |
@@ -21,7 +21,7 @@ automatisch auf einen kleinen Server, sobald eine Verbindung besteht.
 ```
 web/       Die PWA selbst – HTML/CSS/JS, kein Build-Schritt
 server/    FastAPI-Backend: liefert web/ aus + kleine JSON-API unter /api
-tools/     Icon-Generator, Smoke-Test
+tools/     Icon-Generator, Smoke-Test, Excel-Sync (CLI + Klick-Fenster)
 ```
 
 **IndexedDB im Browser bleibt die primäre Datenquelle.** Stempeln, Editieren,
@@ -145,6 +145,28 @@ Datum;Kommt 1;Geht 1;Kommt 2;Geht 2;Kommt 3;Geht 3;Kommt 4;Geht 4;bezahlte Abwes
 Export öffnet auf dem Handy das Teilen-Menü (Datei sichern, mailen …).
 Alternativ legt „CSV in Zwischenablage" den Text direkt zum Einfügen bereit.
 
+## Excel-Export
+
+Statt CSV manuell zu übertragen, schreibt `tools/sync_to_excel.py` die
+Server-Daten direkt in die institutionelle Excel-Arbeitszeiterfassung
+(Details zu Spalten/Zeilen-Mapping im Docstring der Datei). Legt vor jedem
+Schreiben automatisch ein Backup an (`<Name>.backup-<Zeitstempel>.xlsx`),
+rührt nur die reinen Eingabespalten an, Formeln bleiben unangetastet.
+
+**Klick-Starter ohne Kommandozeile:** Verknüpfung **„Excel aktualisieren"**
+direkt im Ordner `Zeiterfassung` (eine Ebene über diesem Repo) öffnet
+`tools/excel_sync_gui.py` als Fenster (via `pythonw.exe`, kein
+Konsolenfenster) – ein Klick auf „Excel-Datei aktualisieren" holt die
+aktuellen Server-Daten und schreibt sie rein, mit Log-Ausgabe und einem
+„Datei öffnen"-Knopf danach. Nutzt dieselbe Logik wie die CLI
+(`tools/excel_sync_core.py`).
+
+```powershell
+python tools\sync_to_excel.py                    # schreibt direkt
+python tools\sync_to_excel.py --dry-run           # nur anzeigen, nichts speichern
+python tools\sync_to_excel.py --person nadja --file "C:\...\Nadjas Zeiterfassung.xlsx"
+```
+
 ## Daten und Backup
 
 Primärspeicher ist die IndexedDB auf dem Gerät (Fallback: `localStorage`).
@@ -161,20 +183,27 @@ komplett anderes Gerät zu übertragen oder ausserhalb des Tailnets zu sichern.
 ```
 web/
   index.html                App-Shell und Grundgerüst
-  styles.css                Dunkles, industrielles Design
+  styles.css                Helles, industrielles Design
   app.js                    Zustand, Rendering, Aktionen, CSV
   db.js                     IndexedDB-Zugriff (+ localStorage-Fallback)
   sync.js                   Automatischer Server-Sync mit Offline-Warteschlange
   sw.js                     Service Worker (Offline-Cache, lässt /api/* durch)
   manifest.json              PWA-Manifest
-  icons/                     App-Icons (192, 512, maskable, favicon)
+  icons/                     App-Icons (192, 512, maskable, favicon, .ico fürs Excel-Fenster)
 server/
   main.py                    FastAPI: liefert web/ aus + /api/days
   requirements.txt
 tools/
   make_icons.py              Erzeugt die Icons neu (benötigt Pillow)
   smoke-test.js               Durchläuft die App-Logik in einem DOM-Stub
+  excel_sync_core.py          Gemeinsame Logik für den Excel-Export
+  sync_to_excel.py             CLI-Wrapper um excel_sync_core.py
+  excel_sync_gui.py            Klick-Fenster (Tkinter) um excel_sync_core.py
 ```
+
+Ausserhalb des Repos, eine Ebene höher im Ordner `Zeiterfassung`: die
+Verknüpfung **„Excel aktualisieren.lnk"** (zeigt auf `excel_sync_gui.py`)
+und die eigentliche Excel-Datei selbst.
 
 ## Tests
 
