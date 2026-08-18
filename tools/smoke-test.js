@@ -160,6 +160,14 @@ async function clickAction(dataset) {
   await settle();
 }
 
+/** Simuliert ein 'change' auf einem Formularfeld (Zeit-Inputs, Stunden-Eingabe) –
+ *  die App liest solche Felder erst bei 'change', nicht bei jedem Tastendruck. */
+async function changeAction(target) {
+  const t = Object.assign({ dataset: {} }, target);
+  (els.screen.listeners.change || []).forEach((fn) => fn({ target: t }));
+  await settle();
+}
+
 async function clickTab(screen) {
   const target = { dataset: { screen }, closest: () => target };
   (els.tabbar.listeners.click || []).forEach((fn) => fn({ target, preventDefault() {} }));
@@ -209,25 +217,34 @@ function pressed(label) {
   };
   const geht1Time = [...html().matchAll(/class="time">(\d{2}:\d{2})</g)].map((m) => m[1]).pop();
 
-  // Kurzeintrag: kurze, bereits erledigte Tätigkeit in einem Schritt erfassen
-  // (z.B. ein 30-Min-Meeting) statt manuell zweimal zu stempeln. Muss direkt
-  // an den letzten Eintrag anschliessen (kein Überschneiden mit Geht 1).
+  // "+ Eintrag" im Stunden-Modus: kurze, bereits erledigte Tätigkeit in einem
+  // Schritt erfassen statt manuell zweimal zu stempeln. Muss direkt an den
+  // letzten Eintrag anschliessen (kein Überschneiden mit Geht 1).
   await clickAction({ action: 'quick-open', iso: todayIso() });
-  check('Kurzeintrag-Formular offen', html().includes('data-action="quick-save"'));
-  await clickAction({ action: 'quick-duration', value: '30 Min' });
+  check('Eintrag-Formular offen', html().includes('data-action="quick-save"'));
+  check('Standardmodus ist "Stunden"', /data-value="stunden"\s+aria-pressed="true"/.test(html()));
+  await clickAction({ action: 'quick-hours-preset', value: '0.5' });
+  check('0.5h-Preset gesetzt', html().includes('value="0.50"'));
   await clickAction({ action: 'quick-cat', value: 'Testevents' });
   await clickAction({ action: 'quick-save' });
-  check('Kurzeintrag-Formular schliesst nach Speichern', !html().includes('data-action="quick-save"'));
-  check('Kurzeintrag zeigt Tätigkeit als Badge', /Kommt 2<\/span>\s*<span class="badge">Testevents/.test(html()));
-  check('Nächster Stempel ist Kommt 3 nach Kurzeintrag', html().includes('punch-title">Kommt 3'));
+  check('Eintrag-Formular schliesst nach Speichern', !html().includes('data-action="quick-save"'));
+  check('Eintrag zeigt Tätigkeit als Badge', /Kommt 2<\/span>\s*<span class="badge">Testevents/.test(html()));
+  check('Nächster Stempel ist Kommt 3 nach Eintrag', html().includes('punch-title">Kommt 3'));
 
   {
     const times = [...html().matchAll(/class="time">(\d{2}:\d{2})</g)].map((m) => m[1]);
-    const [qKommt, qGeht] = times.slice(-2); // letztes Paar = der Kurzeintrag
-    check('Kurzeintrag schliesst nahtlos an Geht 1 an', qKommt === geht1Time, `Geht 1=${geht1Time} Kommt 2=${qKommt}`);
+    const [qKommt, qGeht] = times.slice(-2); // letztes Paar = der neue Eintrag
+    check('Eintrag schliesst nahtlos an Geht 1 an', qKommt === geht1Time, `Geht 1=${geht1Time} Kommt 2=${qKommt}`);
     const diff = ((toMin(qGeht) - toMin(qKommt)) % 1440 + 1440) % 1440;
-    check('Kurzeintrag-Dauer beträgt exakt 30 Minuten', diff === 30, `${qKommt} -> ${qGeht} (${diff} Min)`);
+    check('Stunden-Eintrag (0.5h) beträgt exakt 30 Minuten', diff === 30, `${qKommt} -> ${qGeht} (${diff} Min)`);
   }
+
+  // Stepper: +/- 0.25h dürfen keine Fliesskomma-Reste erzeugen
+  await clickAction({ action: 'quick-open', iso: todayIso() });
+  await clickAction({ action: 'quick-hours-step', value: '0.25' });
+  await clickAction({ action: 'quick-hours-step', value: '0.25' });
+  check('Stepper: 1.00h + 0.25h + 0.25h = 1.50h exakt', html().includes('value="1.50"'));
+  await clickAction({ action: 'quick-cancel' });
 
   // Zeit von Hand korrigieren
   els.editTime = new FakeEl('input', 'editTime');
@@ -341,24 +358,48 @@ function pressed(label) {
     `${syncedIsos.size} von ${storedDayCount}`
   );
 
-  // Kurzeintrag muss auch in der Tagesansicht für einen beliebigen, nicht-
+  // "+ Eintrag" muss auch in der Tagesansicht für einen beliebigen, nicht-
   // heutigen Tag verfügbar sein – nicht nur auf dem Stempeln-Screen. Bewusst
-  // erst hier (ganz am Ende) getestet: verändert pastIso auf 4:45 h, was
-  // frühere, auf "4:30 h" fixierte Wochen-/CSV-Checks kaputt machen würde.
+  // erst hier (ganz am Ende) getestet: verändert pastIso, was frühere, auf
+  // "4:30 h" fixierte Wochen-/CSV-Checks kaputt machen würde. Testet hier
+  // gleich den Zeit-Modus (Von/Bis) inkl. Validierung – der Stunden-Modus
+  // wurde bereits weiter oben auf dem Stempeln-Screen abgedeckt.
   await clickAction({ action: 'goday', iso: pastIso });
   check(
-    'Kurzeintrag-Button auch für vergangenen Tag sichtbar',
+    'Eintrag-Button auch für vergangenen Tag sichtbar',
     html().includes(`data-action="quick-open" data-iso="${pastIso}"`)
   );
   await clickAction({ action: 'quick-open', iso: pastIso });
-  check('Kurzeintrag-Formular für vergangenen Tag offen', html().includes('data-action="quick-save"'));
-  await clickAction({ action: 'quick-duration', value: '15 Min' });
+  check('Eintrag-Formular für vergangenen Tag offen', html().includes('data-action="quick-save"'));
+  await clickAction({ action: 'quick-mode', value: 'zeit' });
+  check('Zeit-Modus zeigt Von/Bis-Felder', html().includes('id="quickVon"') && html().includes('id="quickBis"'));
+
+  // Validierung: Bis vor Von -> Speichern muss abgelehnt werden (Formular bleibt offen)
+  await changeAction({ type: 'time', value: '15:00', dataset: { role: 'quick-von' } });
+  await changeAction({ type: 'time', value: '14:00', dataset: { role: 'quick-bis' } });
+  check('Ungültige Spanne zeigt Hinweis statt Dauer', html().includes('Bis muss nach Von liegen'));
   await clickAction({ action: 'quick-cat', value: 'Werkstatt' });
   await clickAction({ action: 'quick-save' });
-  check('Kurzeintrag am vergangenen Tag gespeichert', /Kommt 2<\/span>\s*<span class="badge">Werkstatt/.test(html()));
+  check('Speichern bei Bis < Von abgelehnt (Formular bleibt offen)', html().includes('data-action="quick-save"'));
+
+  // Validierung: Von vor dem letzten bestehenden Eintrag (12:30) -> Überschneidung, ablehnen
+  await changeAction({ type: 'time', value: '10:00', dataset: { role: 'quick-von' } });
+  await changeAction({ type: 'time', value: '11:00', dataset: { role: 'quick-bis' } });
+  await clickAction({ action: 'quick-save' });
   check(
-    'Kurzeintrag am vergangenen Tag schliesst an 12:30 an (-> 12:45)',
-    html().includes('>12:30<') && html().includes('>12:45<')
+    'Speichern bei Überschneidung mit bestehendem Eintrag abgelehnt (Formular bleibt offen)',
+    html().includes('data-action="quick-save"')
+  );
+
+  // Gültige Zeitspanne direkt nach dem letzten Eintrag (12:30) -> muss klappen
+  await changeAction({ type: 'time', value: '13:00', dataset: { role: 'quick-von' } });
+  await changeAction({ type: 'time', value: '15:00', dataset: { role: 'quick-bis' } });
+  check('Live-Dauer-Anzeige zeigt 2:00 h', html().includes('= 2:00 h'));
+  await clickAction({ action: 'quick-save' });
+  check('Eintrag (Zeit-Modus) am vergangenen Tag gespeichert', /Kommt 2<\/span>\s*<span class="badge">Werkstatt/.test(html()));
+  check(
+    'Eintrag (Zeit-Modus) übernimmt exakt Von/Bis (13:00–15:00)',
+    html().includes('>13:00<') && html().includes('>15:00<')
   );
 
   // Löschen

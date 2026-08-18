@@ -8,9 +8,12 @@
   // ---------------------------------------------------------------- Konstanten
 
   const WORK_CATEGORIES = ['Büro', 'Garantie', 'Werkstatt', 'Testen', 'Testevents', 'Sonstiges'];
-  // Für den "Kurzeintrag" – kurze Tätigkeiten, die man nachträglich in einem
-  // Schritt statt mit zwei separaten Stempeln erfassen will.
-  const QUICK_DURATIONS = ['15 Min', '30 Min', '45 Min', '60 Min'];
+  // Für den Eintrag-Dialog (Modus "Stunden") – Viertelstunden-Schritte, damit
+  // intern alles in ganzen Minuten bleibt und keine Rundungsfehler entstehen.
+  const HOURS_STEP = 0.25;
+  const HOURS_MIN = 0.25;
+  const HOURS_MAX = 12; // Sanity-Obergrenze für einen einzelnen Eintrag
+  const HOUR_PRESETS = [1, 2, 4, 8];
   // Muss exakt der Dropdown-Liste (Spalte P) in der institutionellen Excel-
   // Arbeitszeiterfassung entsprechen, sonst schlägt der 1:1-Übertrag fehl.
   // "Feiertag" entfällt bewusst: Feiertage berechnet die Excel-Vorlage selbst.
@@ -160,7 +163,7 @@
     monthAnchor: new Date(),
     editing: null, // { iso, idx }
     addForm: null, // { iso, category }
-    quickForm: null, // { duration, category } – Kurzeintrag auf dem Stempeln-Screen
+    quickForm: null, // { iso, category, mode: 'stunden'|'zeit', hours, von, bis } – "+ Eintrag"
     ready: false,
   };
 
@@ -328,34 +331,84 @@
     </div>`;
   }
 
-  /** "+ Kurzeintrag": erfasst eine kurze, bereits erledigte Tätigkeit
-   *  (z.B. ein 30-Min-Meeting) in einem Schritt als Kommt/Geht-Paar – schliesst
-   *  nahtlos an den letzten Eintrag des jeweiligen Tages an. Funktioniert für
-   *  jeden Tag (heute auf dem Stempeln-Screen, jeden beliebigen Tag über die
-   *  Tagesansicht), deshalb `iso`/`day` als Parameter statt fix "heute". */
+  /** "+ Eintrag": erfasst eine Tätigkeit entweder als Zeitspanne (Von/Bis)
+   *  oder direkt als Stundenzahl (Stepper/Presets), ohne manuell zweimal zu
+   *  stempeln – ergibt intern immer ein ganz normales Kommt/Geht-Paar und
+   *  schliesst dabei nahtlos an den letzten Eintrag des jeweiligen Tages an.
+   *  Funktioniert für jeden Tag (heute auf dem Stempeln-Screen, jeden
+   *  beliebigen Tag über die Tagesansicht), deshalb `iso`/`day` als Parameter
+   *  statt fix "heute". */
   function quickEntryHtml(iso, day) {
     const limit = day.punches.length >= MAX_PUNCHES;
     const nextType = day.punches.length % 2 === 0 ? 'Kommt' : 'Geht';
     if (limit || nextType !== 'Kommt') return '';
-    // Ohne bisherigen Eintrag fehlt der Anschlusspunkt – nur für "heute" gibt
-    // es dann noch den Ersatz-Anker "jetzt". An einem anderen Tag muss der
-    // erste Eintrag über "+ nachtragen" mit fester Uhrzeit erfolgen.
-    if (day.punches.length === 0 && iso !== state.todayIso) return '';
+    // Ohne bisherigen Eintrag fehlt der Anschlusspunkt für den Stunden-Modus
+    // – nur für "heute" gibt es dann noch den Ersatz-Anker "jetzt". An einem
+    // anderen Tag muss der erste Eintrag über "+ nachtragen" mit fester
+    // Uhrzeit erfolgen (oder direkt über den Zeit-Modus mit fester Von-Zeit).
+    const hasAnchor = day.punches.length > 0 || iso === state.todayIso;
 
     const q = state.quickForm && state.quickForm.iso === iso ? state.quickForm : null;
     if (!q) {
-      return `<button class="btn dashed" data-action="quick-open" data-iso="${iso}">${ICON.plus} Kurzeintrag</button>`;
+      if (!hasAnchor) return '';
+      return `<button class="btn dashed" data-action="quick-open" data-iso="${iso}">${ICON.plus} Eintrag</button>`;
     }
+
+    const modeSeg = `<div class="seg" style="margin-bottom:12px">
+      <button class="seg-btn" type="button" data-action="quick-mode" data-value="stunden"
+              aria-pressed="${q.mode === 'stunden'}">Stunden</button>
+      <button class="seg-btn teal" type="button" data-action="quick-mode" data-value="zeit"
+              aria-pressed="${q.mode === 'zeit'}" ${hasAnchor ? '' : 'disabled'}>Zeit</button>
+    </div>`;
+
+    let body;
+    if (q.mode === 'zeit') {
+      let durationHint = '';
+      if (q.von && q.bis) {
+        const diff = minutesBetween(q.von, q.bis);
+        durationHint =
+          diff > 0
+            ? `<div class="hint" style="color:var(--teal-ink)">= ${fmtMinutes(diff)} h</div>`
+            : `<div class="hint" style="color:var(--danger)">Bis muss nach Von liegen</div>`;
+      }
+      body = `<div class="field">
+        <span class="label">Von – Bis</span>
+        <div class="timerange">
+          <input class="input mono time-input" type="time" step="900" id="quickVon"
+                 value="${esc(q.von)}" data-role="quick-von">
+          <span class="timerange-sep">–</span>
+          <input class="input mono time-input" type="time" step="900" id="quickBis"
+                 value="${esc(q.bis)}" data-role="quick-bis">
+        </div>
+        ${durationHint}
+      </div>`;
+    } else {
+      body = `<div class="field">
+        <span class="label">Stunden</span>
+        <div class="stepper">
+          <button class="stepbtn" type="button" data-action="quick-hours-step" data-value="${-HOURS_STEP}" aria-label="Weniger">−</button>
+          <input class="input mono stepper-input" id="quickHours" type="number" inputmode="decimal"
+                 step="${HOURS_STEP}" min="${HOURS_MIN}" max="${HOURS_MAX}" value="${q.hours.toFixed(2)}"
+                 data-role="quick-hours">
+          <button class="stepbtn" type="button" data-action="quick-hours-step" data-value="${HOURS_STEP}" aria-label="Mehr">+</button>
+        </div>
+        <div class="chip-row" style="margin-top:8px">
+          ${HOUR_PRESETS.map(
+            (h) => `<button class="chip" type="button" data-action="quick-hours-preset" data-value="${h}"
+              aria-pressed="${q.hours === h ? 'true' : 'false'}">${ICON.check}<span>${h} h</span></button>`
+          ).join('')}
+        </div>
+      </div>`;
+    }
+
     return `<div class="card">
-      <div class="label">Kurzeintrag – gerade eben erledigt</div>
-      <div class="field">
-        <span class="label">Dauer</span>
-        ${chips(QUICK_DURATIONS, q.duration, 'quick-duration')}
-      </div>
+      <div class="label">Eintrag</div>
+      ${modeSeg}
       <div class="field">
         <span class="label">Tätigkeit</span>
         ${chips(WORK_CATEGORIES, q.category, 'quick-cat')}
       </div>
+      ${body}
       <div class="btn-row">
         <button class="btn primary" data-action="quick-save">Speichern</button>
         <button class="btn ghost" data-action="quick-cancel">Abbrechen</button>
@@ -884,17 +937,33 @@
         break;
 
       case 'quick-open':
-        state.quickForm = { iso, duration: null, category: null };
+        state.quickForm = { iso, category: null, mode: 'stunden', hours: 1, von: '', bis: '' };
         render();
         break;
 
-      case 'quick-duration':
-        if (state.quickForm) state.quickForm.duration = state.quickForm.duration === value ? null : value;
+      case 'quick-mode':
+        if (state.quickForm) state.quickForm.mode = value;
         render();
         break;
 
       case 'quick-cat':
         if (state.quickForm) state.quickForm.category = state.quickForm.category === value ? null : value;
+        render();
+        break;
+
+      case 'quick-hours-step':
+        if (state.quickForm) {
+          // *4 / 4 statt direkter Addition: vermeidet Fliesskomma-Reste wie
+          // 0.1 + 0.2 = 0.30000000000000004, damit der Wert immer exakt auf
+          // einem 0.25-Schritt bleibt.
+          const next = Math.round((state.quickForm.hours + parseFloat(value)) * 4) / 4;
+          state.quickForm.hours = Math.min(HOURS_MAX, Math.max(HOURS_MIN, next));
+        }
+        render();
+        break;
+
+      case 'quick-hours-preset':
+        if (state.quickForm) state.quickForm.hours = parseFloat(value);
         render();
         break;
 
@@ -905,8 +974,8 @@
 
       case 'quick-save': {
         const q = state.quickForm;
-        if (!q.duration || !q.category) {
-          toast('Bitte Dauer und Tätigkeit wählen');
+        if (!q.category) {
+          toast('Bitte Tätigkeit wählen');
           break;
         }
         const targetIso = q.iso;
@@ -915,19 +984,45 @@
           toast('Maximum von 4 Paaren pro Tag erreicht');
           break;
         }
-        const minutes = parseInt(q.duration, 10);
-        // Schliesst direkt an den letzten Eintrag an (kein Überschneiden mit
-        // bereits Erfasstem) – nur beim allerersten Eintrag des Tages gibt es
-        // noch keinen Anschlusspunkt, dann wird von "jetzt" rückwärts gerechnet
-        // (nur möglich für "heute", siehe quickEntryHtml).
+
         let kommtTime, gehtTime;
-        if (target.punches.length > 0) {
-          kommtTime = target.punches[target.punches.length - 1].time;
-          gehtTime = addMinutes(kommtTime, minutes);
+        if (q.mode === 'zeit') {
+          if (!q.von || !q.bis) {
+            toast('Bitte Von und Bis wählen');
+            break;
+          }
+          if (minutesBetween(q.von, q.bis) <= 0) {
+            toast('Bis muss nach Von liegen');
+            break;
+          }
+          if (target.punches.length > 0) {
+            const lastTime = target.punches[target.punches.length - 1].time;
+            if (minutesBetween(lastTime, q.von) < 0) {
+              toast(`Von darf nicht vor dem letzten Eintrag (${lastTime}) liegen`);
+              break;
+            }
+          }
+          kommtTime = q.von;
+          gehtTime = q.bis;
         } else {
-          gehtTime = roundToQuarterHour(timeNow());
-          kommtTime = subtractMinutes(gehtTime, minutes);
+          const minutes = Math.round(q.hours * 60);
+          if (minutes <= 0) {
+            toast('Bitte Stunden wählen');
+            break;
+          }
+          // Schliesst direkt an den letzten Eintrag an (kein Überschneiden mit
+          // bereits Erfasstem) – nur beim allerersten Eintrag des Tages gibt es
+          // noch keinen Anschlusspunkt, dann wird von "jetzt" rückwärts gerechnet
+          // (nur möglich für "heute", siehe quickEntryHtml).
+          if (target.punches.length > 0) {
+            kommtTime = target.punches[target.punches.length - 1].time;
+            gehtTime = addMinutes(kommtTime, minutes);
+          } else {
+            gehtTime = roundToQuarterHour(timeNow());
+            kommtTime = subtractMinutes(gehtTime, minutes);
+          }
         }
+
         const entries = [
           { type: 'Kommt', time: kommtTime, category: q.category },
           { type: 'Geht', time: gehtTime },
@@ -935,7 +1030,7 @@
         await updateDay(targetIso, (d) => ({ ...d, punches: [...d.punches, ...entries] }));
         state.quickForm = null;
         render();
-        toast(`Kurzeintrag: ${q.duration} · ${q.category} (${kommtTime}–${gehtTime})`);
+        toast(`Eintrag: ${q.category} · ${kommtTime}–${gehtTime}`);
         break;
       }
 
@@ -1166,6 +1261,25 @@
       const rounded = roundToQuarterHour(e.target.value);
       if (rounded !== e.target.value) e.target.value = rounded;
       if (e.target.dataset.role === 'add-time' && state.addForm) state.addForm.time = rounded;
+      if (state.quickForm && e.target.dataset.role === 'quick-von') {
+        state.quickForm.von = rounded;
+        render();
+      }
+      if (state.quickForm && e.target.dataset.role === 'quick-bis') {
+        state.quickForm.bis = rounded;
+        render();
+      }
+      return;
+    }
+    // Direkte Stundeneingabe (Modus "Stunden"): auf 0.25h runden und in den
+    // erlaubten Bereich klemmen, statt beliebige Dezimalwerte zu übernehmen.
+    if (e.target.dataset.role === 'quick-hours' && state.quickForm) {
+      let v = parseFloat(e.target.value);
+      if (!Number.isFinite(v)) v = state.quickForm.hours; // ungültige Eingabe -> alten Wert behalten
+      v = Math.round(v * 4) / 4;
+      v = Math.min(HOURS_MAX, Math.max(HOURS_MIN, v));
+      state.quickForm.hours = v;
+      render();
     }
   });
 
