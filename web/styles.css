@@ -313,57 +313,6 @@ select {
   transform: scale(0.97);
 }
 
-/* ---------- Stempel-Button ---------- */
-
-.punch {
-  width: 100%;
-  border-radius: 18px;
-  padding: 30px 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  background: var(--surface-2);
-  color: var(--dim);
-  transition: transform 0.1s, background 0.15s, color 0.15s;
-  border: 1px solid transparent;
-}
-
-.punch:active {
-  transform: scale(0.985);
-}
-
-.punch.kommt {
-  background: var(--amber);
-  color: var(--ink);
-  box-shadow: 0 10px 30px -14px rgba(232, 163, 61, 0.5);
-}
-
-.punch.geht {
-  background: #eaf7f4;
-  color: var(--text);
-  border-color: var(--teal);
-  box-shadow: 0 10px 30px -16px rgba(79, 184, 168, 0.35);
-}
-
-.punch-ico {
-  width: 32px;
-  height: 32px;
-}
-
-.punch-title {
-  font-family: var(--mono);
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.punch-sub {
-  font-family: var(--mono);
-  font-size: 12px;
-  opacity: 0.72;
-}
-
 /* ---------- Cards / Listen ---------- */
 
 .card {
@@ -628,6 +577,14 @@ textarea.input:focus {
   background: var(--amber);
   color: var(--ink);
   font-weight: 600;
+}
+
+/* Hauptaktion auf dem Stempeln-Screen (ersetzt den früheren grossen Stempel-Button) */
+.quick-primary {
+  min-height: 64px;
+  border-radius: 16px;
+  font-size: 16px;
+  box-shadow: 0 10px 30px -14px rgba(232, 163, 61, 0.5);
 }
 
 .btn.teal {

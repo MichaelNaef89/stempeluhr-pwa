@@ -187,16 +187,25 @@ function pressed(label) {
   await settle(20);
 
   check('Startbildschirm rendert', html().includes('Zeiterfassung'));
-  check('Tätigkeits-Chips sichtbar', html().includes('Wo arbeitest du?') && html().includes('Werkstatt'));
-  check('Stempel-Button ohne Kategorie gesperrt', html().includes('zuerst Tätigkeit wählen') && html().includes('disabled'));
+  check('Primärer "+ Eintrag"-Button sichtbar (keine Kategorie/Stempel-Vorauswahl mehr)', html().includes('Eintrag erfassen'));
 
-  await clickAction({ action: 'cat', value: 'Werkstatt' });
-  check('Kategorie ausgewählt (aria-pressed)', pressed('Werkstatt') === true);
-  check('Button jetzt aktiv', html().includes('antippen zum Erfassen') && !html().includes('<button class="punch " '));
+  const toMin = (t) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
 
-  await clickAction({ action: 'punch' });
-  check('Kommt 1 erfasst', /Kommt 1<\/span>\s*<span class="badge">Werkstatt/.test(html()));
-  check('Nächster Stempel ist Geht 1', html().includes('punch-title">Geht 1'));
+  // Erster Eintrag des Tages: "+ Eintrag" im Stunden-Modus (1h, Werkstatt).
+  // Ohne bisherigen Eintrag rechnet der Stunden-Modus von "jetzt" rückwärts,
+  // ergibt also direkt ein vollständiges Kommt/Geht-Paar in einem Schritt.
+  await clickAction({ action: 'quick-open', iso: todayIso() });
+  check('Eintrag-Formular offen', html().includes('data-action="quick-save"'));
+  check('Standardmodus ist "Stunden" (Anker "jetzt" vorhanden)', /data-value="stunden"\s+aria-pressed="true"/.test(html()));
+  await clickAction({ action: 'quick-hours-preset', value: '1' });
+  await clickAction({ action: 'quick-cat', value: 'Werkstatt' });
+  await clickAction({ action: 'quick-save' });
+  check('Eintrag-Formular schliesst nach Speichern', !html().includes('data-action="quick-save"'));
+  check('Kommt 1 erfasst mit Tätigkeit als Badge', /Kommt 1<\/span>\s*<span class="badge">Werkstatt/.test(html()));
+  check('Geht 1 erfasst', (html().match(/class="dot teal"/g) || []).length >= 1);
 
   // Sync: Server ist im Test absichtlich unerreichbar (fakeFetch wirft immer) ->
   // muss lokal trotzdem gespeichert bleiben und als "offline/ausstehend" markiert werden.
@@ -206,30 +215,16 @@ function pressed(label) {
   );
   check('Sync-Status zeigt offline bei nicht erreichbarem Server', els.syncRow.className.includes('offline'));
 
-  await wait(950); // Doppeltipp-Sperre abwarten
-  await clickAction({ action: 'punch' });
-  check('Geht 1 erfasst', (html().match(/class="dot teal"/g) || []).length >= 1);
-  check('Nächster Stempel ist Kommt 2', html().includes('punch-title">Kommt 2'));
-
-  const toMin = (t) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
   const geht1Time = [...html().matchAll(/class="time">(\d{2}:\d{2})</g)].map((m) => m[1]).pop();
 
-  // "+ Eintrag" im Stunden-Modus: kurze, bereits erledigte Tätigkeit in einem
-  // Schritt erfassen statt manuell zweimal zu stempeln. Muss direkt an den
-  // letzten Eintrag anschliessen (kein Überschneiden mit Geht 1).
+  // Zweiter Eintrag desselben Tages ("+ Eintrag", 0.5h, Testevents) – muss
+  // direkt an Geht 1 anschliessen (kein Überschneiden).
   await clickAction({ action: 'quick-open', iso: todayIso() });
-  check('Eintrag-Formular offen', html().includes('data-action="quick-save"'));
-  check('Standardmodus ist "Stunden"', /data-value="stunden"\s+aria-pressed="true"/.test(html()));
   await clickAction({ action: 'quick-hours-preset', value: '0.5' });
   check('0.5h-Preset gesetzt', html().includes('value="0.50"'));
   await clickAction({ action: 'quick-cat', value: 'Testevents' });
   await clickAction({ action: 'quick-save' });
-  check('Eintrag-Formular schliesst nach Speichern', !html().includes('data-action="quick-save"'));
-  check('Eintrag zeigt Tätigkeit als Badge', /Kommt 2<\/span>\s*<span class="badge">Testevents/.test(html()));
-  check('Nächster Stempel ist Kommt 3 nach Eintrag', html().includes('punch-title">Kommt 3'));
+  check('Zweiter Eintrag zeigt Tätigkeit als Badge (Kommt 2)', /Kommt 2<\/span>\s*<span class="badge">Testevents/.test(html()));
 
   {
     const times = [...html().matchAll(/class="time">(\d{2}:\d{2})</g)].map((m) => m[1]);
@@ -357,6 +352,23 @@ function pressed(label) {
     syncedIsos.size === storedDayCount,
     `${syncedIsos.size} von ${storedDayCount}`
   );
+
+  // Regressionstest: An einem Tag ganz ohne bisherigen Eintrag UND der nicht
+  // "heute" ist, fehlt der Anker für den Stunden-Modus (der ohne Anker von
+  // "jetzt" rückwärts rechnet) – der Button muss trotzdem sichtbar bleiben,
+  // aber automatisch im Zeit-Modus starten und "Stunden" deaktivieren.
+  const freshEmptyIso = '2026-11-11';
+  await clickAction({ action: 'goday', iso: freshEmptyIso });
+  await clickAction({ action: 'quick-open', iso: freshEmptyIso });
+  check(
+    'Ohne Anker startet "+ Eintrag" automatisch im Zeit-Modus',
+    /data-value="zeit"\s+aria-pressed="true"/.test(html())
+  );
+  check(
+    'Ohne Anker ist "Stunden" deaktiviert statt umgekehrt',
+    /data-value="stunden"[^>]*disabled/.test(html())
+  );
+  await clickAction({ action: 'quick-cancel' });
 
   // "+ Eintrag" muss auch in der Tagesansicht für einen beliebigen, nicht-
   // heutigen Tag verfügbar sein – nicht nur auf dem Stempeln-Screen. Bewusst

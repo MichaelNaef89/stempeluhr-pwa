@@ -157,7 +157,6 @@
     todayIso: isoDate(new Date()),
     cache: Object.create(null), // iso -> day
     mode: 'punch', // punch | absence (nur Startbildschirm)
-    selectedCategory: null,
     viewDate: new Date(),
     weekAnchor: new Date(),
     monthAnchor: new Date(),
@@ -217,7 +216,6 @@
   // ---------------------------------------------------------------- Icons
 
   const ICON = {
-    clock: '<svg class="ico punch-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     check: '<svg class="ico thick check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
     checkPlain: '<svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
     x: '<svg class="ico" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
@@ -338,27 +336,30 @@
    *  Funktioniert für jeden Tag (heute auf dem Stempeln-Screen, jeden
    *  beliebigen Tag über die Tagesansicht), deshalb `iso`/`day` als Parameter
    *  statt fix "heute". */
-  function quickEntryHtml(iso, day) {
+  function quickEntryHtml(iso, day, opts) {
+    const primary = opts && opts.primary;
     const limit = day.punches.length >= MAX_PUNCHES;
     const nextType = day.punches.length % 2 === 0 ? 'Kommt' : 'Geht';
     if (limit || nextType !== 'Kommt') return '';
     // Ohne bisherigen Eintrag fehlt der Anschlusspunkt für den Stunden-Modus
-    // – nur für "heute" gibt es dann noch den Ersatz-Anker "jetzt". An einem
-    // anderen Tag muss der erste Eintrag über "+ nachtragen" mit fester
-    // Uhrzeit erfolgen (oder direkt über den Zeit-Modus mit fester Von-Zeit).
+    // (der ohne Anker von "jetzt" rückwärts rechnet – nur für "heute" sinnvoll).
+    // Der Zeit-Modus braucht dagegen keinen Anker, Von/Bis werden ja explizit
+    // eingegeben – deshalb bleibt der Button immer sichtbar, nur "Stunden"
+    // wird in diesem Fall deaktiviert statt umgekehrt.
     const hasAnchor = day.punches.length > 0 || iso === state.todayIso;
 
     const q = state.quickForm && state.quickForm.iso === iso ? state.quickForm : null;
     if (!q) {
-      if (!hasAnchor) return '';
-      return `<button class="btn dashed" data-action="quick-open" data-iso="${iso}">${ICON.plus} Eintrag</button>`;
+      return primary
+        ? `<button class="btn primary quick-primary" data-action="quick-open" data-iso="${iso}">${ICON.plus} Eintrag erfassen</button>`
+        : `<button class="btn dashed" data-action="quick-open" data-iso="${iso}">${ICON.plus} Eintrag</button>`;
     }
 
     const modeSeg = `<div class="seg" style="margin-bottom:12px">
       <button class="seg-btn" type="button" data-action="quick-mode" data-value="stunden"
-              aria-pressed="${q.mode === 'stunden'}">Stunden</button>
+              aria-pressed="${q.mode === 'stunden'}" ${hasAnchor ? '' : 'disabled'}>Stunden</button>
       <button class="seg-btn teal" type="button" data-action="quick-mode" data-value="zeit"
-              aria-pressed="${q.mode === 'zeit'}" ${hasAnchor ? '' : 'disabled'}>Zeit</button>
+              aria-pressed="${q.mode === 'zeit'}">Zeit</button>
     </div>`;
 
     let body;
@@ -422,11 +423,6 @@
     const iso = state.todayIso;
     const day = getDay(iso);
     const worked = worktimeMinutes(day.punches);
-    const limit = day.punches.length >= MAX_PUNCHES;
-    const nextType = day.punches.length % 2 === 0 ? 'Kommt' : 'Geht';
-    const nr = Math.floor(day.punches.length / 2) + 1;
-    const needsCat = nextType === 'Kommt' && !state.selectedCategory;
-    const blocked = limit || needsCat;
 
     let html = `<div class="section seg">
       <button class="seg-btn" type="button" data-action="mode" data-value="punch"
@@ -436,28 +432,9 @@
     </div>`;
 
     if (state.mode === 'punch') {
-      if (!limit && nextType === 'Kommt') {
-        html += `<div class="section">
-          <span class="label">Wo arbeitest du?</span>
-          ${chips(WORK_CATEGORIES, state.selectedCategory, 'cat')}
-        </div>`;
-      }
-
-      html += `<div class="section">
-        <button class="punch ${blocked ? '' : nextType === 'Kommt' ? 'kommt' : 'geht'}"
-                data-action="punch" ${blocked ? 'disabled' : ''}>
-          ${ICON.clock}
-          <span class="punch-title">${limit ? 'Maximum erreicht' : `${nextType} ${nr}`}</span>
-          ${
-            limit
-              ? '<span class="punch-sub">4 Paare pro Tag</span>'
-              : `<span class="punch-sub">${needsCat ? 'zuerst Tätigkeit wählen' : 'antippen zum Erfassen'}</span>`
-          }
-        </button>
-      </div>`;
-
-      if (!limit && nextType === 'Kommt') {
-        html += `<div class="section">${quickEntryHtml(iso, day)}</div>`;
+      const quick = quickEntryHtml(iso, day, { primary: true });
+      if (quick) {
+        html += `<div class="section">${quick}</div>`;
       }
 
       if (day.abwesenheitStd || day.abwesenheitGrund) {
@@ -892,31 +869,6 @@
 
   // ---------------------------------------------------------------- Aktionen
 
-  let lastPunchAt = 0;
-
-  async function doPunch() {
-    // Doppeltipp abfangen – sonst landet ein "Geht" versehentlich auf derselben Minute
-    const t = Date.now();
-    if (t - lastPunchAt < 900) return;
-    lastPunchAt = t;
-
-    const iso = state.todayIso;
-    const day = getDay(iso);
-    if (day.punches.length >= MAX_PUNCHES) return;
-    const type = day.punches.length % 2 === 0 ? 'Kommt' : 'Geht';
-    if (type === 'Kommt' && !state.selectedCategory) return;
-
-    const entry = { type, time: timeNow() };
-    if (type === 'Kommt') entry.category = state.selectedCategory;
-    const nr = Math.floor(day.punches.length / 2) + 1;
-
-    await updateDay(iso, (d) => ({ ...d, punches: [...d.punches, entry] }));
-    state.selectedCategory = null;
-    if (navigator.vibrate) navigator.vibrate(18);
-    render();
-    toast(type === 'Kommt' ? `Kommt ${nr} · ${entry.category} – ${entry.time}` : `Geht ${nr} erfasst – ${entry.time}`);
-  }
-
   async function handleAction(action, el) {
     const iso = el.dataset.iso;
     const value = el.dataset.value;
@@ -927,19 +879,21 @@
         render();
         break;
 
-      case 'cat':
-        state.selectedCategory = state.selectedCategory === value ? null : value;
+      case 'quick-open': {
+        // Ohne Anker (kein bisheriger Eintrag & nicht "heute") ist "Stunden"
+        // deaktiviert (siehe quickEntryHtml) – dann direkt mit "Zeit" starten.
+        const hasAnchorNow = getDay(iso).punches.length > 0 || iso === state.todayIso;
+        state.quickForm = {
+          iso,
+          category: null,
+          mode: hasAnchorNow ? 'stunden' : 'zeit',
+          hours: 1,
+          von: '',
+          bis: '',
+        };
         render();
         break;
-
-      case 'punch':
-        await doPunch();
-        break;
-
-      case 'quick-open':
-        state.quickForm = { iso, category: null, mode: 'stunden', hours: 1, von: '', bis: '' };
-        render();
-        break;
+      }
 
       case 'quick-mode':
         if (state.quickForm) state.quickForm.mode = value;
@@ -1318,7 +1272,6 @@
     state.viewDate = new Date();
     state.weekAnchor = new Date();
     state.monthAnchor = new Date();
-    state.selectedCategory = null;
     await ensureDays([iso]);
     state.mode = getDay(iso).abwesenheitStd ? 'absence' : 'punch';
     await go();
