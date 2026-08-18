@@ -9,6 +9,7 @@ automatisch auf einen kleinen Server, sobald eine Verbindung besteht.
 | Bereich | Details |
 |---|---|
 | **Stempeln** | Grosser Button, erkennt automatisch Kommt/Geht, max. 4 Paare pro Tag. Vor jedem „Kommt" ist eine Tätigkeit Pflicht (Büro, Garantie, Werkstatt, Testen, Testevents, Sonstiges). |
+| **Kurzeintrag** | „+ Kurzeintrag" auf dem Stempeln-Screen: kurze, bereits erledigte Tätigkeit (15/30/45/60 Min + Tätigkeit) in einem Schritt als Kommt/Geht-Paar erfassen, ohne manuell zweimal zu stempeln. Geht = jetzt (15-Min-gerundet), Kommt = Geht minus gewählte Dauer. |
 | **Absenz** | Umschalter auf dem Startbildschirm: Stundenzahl + Grund (Ferien, krank, Unfall, geschäftlich, Weiterbild'g – exakt die Dropdown-Liste der Excel-Vorlage). |
 | **Tag** | Beliebiges Datum per Pfeilen, jeder Eintrag editier- und löschbar, „+ nachtragen" für vergessene Stempel an **jedem** Tag, Absenz und Bemerkung pro Tag. |
 | **Woche** | Kalenderwoche (ISO), Stunden bzw. Absenz pro Tag, Tippen springt in die Tagesansicht, Wochentotal. |

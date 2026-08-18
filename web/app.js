@@ -8,6 +8,9 @@
   // ---------------------------------------------------------------- Konstanten
 
   const WORK_CATEGORIES = ['Büro', 'Garantie', 'Werkstatt', 'Testen', 'Testevents', 'Sonstiges'];
+  // Für den "Kurzeintrag" – kurze Tätigkeiten, die man nachträglich in einem
+  // Schritt statt mit zwei separaten Stempeln erfassen will.
+  const QUICK_DURATIONS = ['15 Min', '30 Min', '45 Min', '60 Min'];
   // Muss exakt der Dropdown-Liste (Spalte P) in der institutionellen Excel-
   // Arbeitszeiterfassung entsprechen, sonst schlägt der 1:1-Übertrag fehl.
   // "Feiertag" entfällt bewusst: Feiertage berechnet die Excel-Vorlage selbst.
@@ -42,6 +45,13 @@
     const [h, m] = hhmm.split(':').map(Number);
     let total = Math.round((h * 60 + m) / 15) * 15;
     total = ((total % 1440) + 1440) % 1440; // Mitternachts-Überlauf abfangen
+    return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+  }
+
+  /** Zieht `minutes` von einer "HH:MM"-Zeit ab, mit Mitternachts-Überlauf. */
+  function subtractMinutes(hhmm, minutes) {
+    const [h, m] = hhmm.split(':').map(Number);
+    const total = ((h * 60 + m - minutes) % 1440 + 1440) % 1440;
     return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
   }
 
@@ -145,6 +155,7 @@
     monthAnchor: new Date(),
     editing: null, // { iso, idx }
     addForm: null, // { iso, category }
+    quickForm: null, // { duration, category } – Kurzeintrag auf dem Stempeln-Screen
     ready: false,
   };
 
@@ -312,6 +323,31 @@
     </div>`;
   }
 
+  /** "+ Kurzeintrag": erfasst eine kurze, bereits erledigte Tätigkeit
+   *  (z.B. ein 30-Min-Meeting) in einem Schritt als Kommt/Geht-Paar –
+   *  Geht = jetzt (auf 15 Min gerundet), Kommt = Geht minus gewählte Dauer. */
+  function quickEntryHtml() {
+    const q = state.quickForm;
+    if (!q) {
+      return `<button class="btn dashed" data-action="quick-open">${ICON.plus} Kurzeintrag</button>`;
+    }
+    return `<div class="card">
+      <div class="label">Kurzeintrag – gerade eben erledigt</div>
+      <div class="field">
+        <span class="label">Dauer</span>
+        ${chips(QUICK_DURATIONS, q.duration, 'quick-duration')}
+      </div>
+      <div class="field">
+        <span class="label">Tätigkeit</span>
+        ${chips(WORK_CATEGORIES, q.category, 'quick-cat')}
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" data-action="quick-save">Speichern</button>
+        <button class="btn ghost" data-action="quick-cancel">Abbrechen</button>
+      </div>
+    </div>`;
+  }
+
   // ---------------------------------------------------------------- Screens
 
   function renderStempeln() {
@@ -351,6 +387,10 @@
           }
         </button>
       </div>`;
+
+      if (!limit && nextType === 'Kommt') {
+        html += `<div class="section">${quickEntryHtml()}</div>`;
+      }
 
       if (day.abwesenheitStd || day.abwesenheitGrund) {
         const std = day.abwesenheitStd ? `${esc(day.abwesenheitStd)} h ` : '';
@@ -823,6 +863,52 @@
         await doPunch();
         break;
 
+      case 'quick-open':
+        state.quickForm = { duration: null, category: null };
+        render();
+        break;
+
+      case 'quick-duration':
+        if (state.quickForm) state.quickForm.duration = state.quickForm.duration === value ? null : value;
+        render();
+        break;
+
+      case 'quick-cat':
+        if (state.quickForm) state.quickForm.category = state.quickForm.category === value ? null : value;
+        render();
+        break;
+
+      case 'quick-cancel':
+        state.quickForm = null;
+        render();
+        break;
+
+      case 'quick-save': {
+        const q = state.quickForm;
+        if (!q.duration || !q.category) {
+          toast('Bitte Dauer und Tätigkeit wählen');
+          break;
+        }
+        const todayIso = state.todayIso;
+        const today = getDay(todayIso);
+        if (today.punches.length + 2 > MAX_PUNCHES) {
+          toast('Maximum von 4 Paaren pro Tag erreicht');
+          break;
+        }
+        const minutes = parseInt(q.duration, 10);
+        const gehtTime = roundToQuarterHour(timeNow());
+        const kommtTime = subtractMinutes(gehtTime, minutes);
+        const entries = [
+          { type: 'Kommt', time: kommtTime, category: q.category },
+          { type: 'Geht', time: gehtTime },
+        ];
+        await updateDay(todayIso, (d) => ({ ...d, punches: [...d.punches, ...entries] }));
+        state.quickForm = null;
+        render();
+        toast(`Kurzeintrag: ${q.duration} · ${q.category} (${kommtTime}–${gehtTime})`);
+        break;
+      }
+
       case 'reason': {
         const target = iso || (state.screen === 'tag' ? isoDate(state.viewDate) : state.todayIso);
         await updateDay(target, (d) => ({ ...d, abwesenheitGrund: d.abwesenheitGrund === value ? '' : value }));
@@ -916,6 +1002,7 @@
         state.viewDate = fromIso(iso);
         state.editing = null;
         state.addForm = null;
+        state.quickForm = null;
         await go('tag');
         break;
 
@@ -1002,6 +1089,7 @@
     }
     state.editing = null;
     state.addForm = null;
+    state.quickForm = null;
     await go();
   }
 
@@ -1058,6 +1146,7 @@
     if (next === state.screen) return;
     state.editing = null;
     state.addForm = null;
+    state.quickForm = null;
     go(next);
   });
 

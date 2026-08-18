@@ -203,6 +203,33 @@ function pressed(label) {
   check('Geht 1 erfasst', (html().match(/class="dot teal"/g) || []).length >= 1);
   check('Nächster Stempel ist Kommt 2', html().includes('punch-title">Kommt 2'));
 
+  // Kurzeintrag: kurze, bereits erledigte Tätigkeit in einem Schritt erfassen
+  // (z.B. ein 30-Min-Meeting) statt manuell zweimal zu stempeln.
+  await clickAction({ action: 'quick-open' });
+  check('Kurzeintrag-Formular offen', html().includes('data-action="quick-save"'));
+  await clickAction({ action: 'quick-duration', value: '30 Min' });
+  await clickAction({ action: 'quick-cat', value: 'Testevents' });
+  await clickAction({ action: 'quick-save' });
+  check('Kurzeintrag-Formular schliesst nach Speichern', !html().includes('data-action="quick-save"'));
+  check('Kurzeintrag zeigt Tätigkeit als Badge', /Kommt 2<\/span>\s*<span class="badge">Testevents/.test(html()));
+  check('Nächster Stempel ist Kommt 3 nach Kurzeintrag', html().includes('punch-title">Kommt 3'));
+
+  {
+    const times = [...html().matchAll(/class="time">(\d{2}:\d{2})</g)].map((m) => m[1]);
+    const [qKommt, qGeht] = times.slice(-2); // letztes Paar = der Kurzeintrag
+    const toMin = (t) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const diff = ((toMin(qGeht) - toMin(qKommt)) % 1440 + 1440) % 1440;
+    check('Kurzeintrag-Dauer beträgt exakt 30 Minuten', diff === 30, `${qKommt} -> ${qGeht} (${diff} Min)`);
+    check(
+      'Kurzeintrag-Zeiten auf 15-Minuten-Raster gerundet',
+      toMin(qKommt) % 15 === 0 && toMin(qGeht) % 15 === 0,
+      `${qKommt} / ${qGeht}`
+    );
+  }
+
   // Zeit von Hand korrigieren
   els.editTime = new FakeEl('input', 'editTime');
   els.editTime.value = '07:15';
@@ -219,11 +246,17 @@ function pressed(label) {
   await clickAction({ action: 'mode', value: 'punch' });
   check('Absenzgrund bleibt gespeichert', html().includes('Ferien'));
 
-  // Tagesansicht + Nachtragen an einem anderen Tag
+  // Tagesansicht + Nachtragen an einem anderen Tag – bewusst nicht "immer 2 Tage
+  // zurück": läuft der Test z.B. an einem Montag/Dienstag, würde das in die
+  // VORIGE Kalenderwoche springen und die späteren Wochen-/CSV-Checks (die
+  // denselben Zeitraum wie "heute" erwarten) grundlos zum Scheitern bringen.
   await clickTab('tag');
   check('Tagesansicht rendert', html().includes('Tagesansicht') || html().includes('Heute'));
-  await clickAction({ action: 'nav', value: 'day-prev' });
-  await clickAction({ action: 'nav', value: 'day-prev' });
+  const mondayOffset = (new Date().getDay() + 6) % 7; // 0=Mo..6=So
+  const daysBack = Math.max(1, Math.min(2, mondayOffset));
+  for (let i = 0; i < daysBack; i++) {
+    await clickAction({ action: 'nav', value: 'day-prev' });
+  }
   const backIso = html().match(/data-iso="(\d{4}-\d{2}-\d{2})"/);
   check('Vergangener Tag geöffnet', !!backIso && backIso[1] !== todayIso());
   check('Nachtragen-Button vorhanden', html().includes('nachtragen'));
