@@ -55,6 +55,11 @@
     return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
   }
 
+  /** Zählt `minutes` zu einer "HH:MM"-Zeit dazu, mit Mitternachts-Überlauf. */
+  function addMinutes(hhmm, minutes) {
+    return subtractMinutes(hhmm, -minutes);
+  }
+
   function fmtDateLabel(iso) {
     const d = fromIso(iso);
     return `${WEEKDAYS[d.getDay()]}, ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
@@ -896,8 +901,17 @@
           break;
         }
         const minutes = parseInt(q.duration, 10);
-        const gehtTime = roundToQuarterHour(timeNow());
-        const kommtTime = subtractMinutes(gehtTime, minutes);
+        // Schliesst direkt an den letzten Eintrag an (kein Überschneiden mit
+        // bereits Erfasstem) – nur beim allerersten Eintrag des Tages gibt es
+        // noch keinen Anschlusspunkt, dann wird von "jetzt" rückwärts gerechnet.
+        let kommtTime, gehtTime;
+        if (today.punches.length > 0) {
+          kommtTime = today.punches[today.punches.length - 1].time;
+          gehtTime = addMinutes(kommtTime, minutes);
+        } else {
+          gehtTime = roundToQuarterHour(timeNow());
+          kommtTime = subtractMinutes(gehtTime, minutes);
+        }
         const entries = [
           { type: 'Kommt', time: kommtTime, category: q.category },
           { type: 'Geht', time: gehtTime },

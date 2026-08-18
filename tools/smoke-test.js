@@ -203,8 +203,15 @@ function pressed(label) {
   check('Geht 1 erfasst', (html().match(/class="dot teal"/g) || []).length >= 1);
   check('Nächster Stempel ist Kommt 2', html().includes('punch-title">Kommt 2'));
 
+  const toMin = (t) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const geht1Time = [...html().matchAll(/class="time">(\d{2}:\d{2})</g)].map((m) => m[1]).pop();
+
   // Kurzeintrag: kurze, bereits erledigte Tätigkeit in einem Schritt erfassen
-  // (z.B. ein 30-Min-Meeting) statt manuell zweimal zu stempeln.
+  // (z.B. ein 30-Min-Meeting) statt manuell zweimal zu stempeln. Muss direkt
+  // an den letzten Eintrag anschliessen (kein Überschneiden mit Geht 1).
   await clickAction({ action: 'quick-open' });
   check('Kurzeintrag-Formular offen', html().includes('data-action="quick-save"'));
   await clickAction({ action: 'quick-duration', value: '30 Min' });
@@ -217,17 +224,9 @@ function pressed(label) {
   {
     const times = [...html().matchAll(/class="time">(\d{2}:\d{2})</g)].map((m) => m[1]);
     const [qKommt, qGeht] = times.slice(-2); // letztes Paar = der Kurzeintrag
-    const toMin = (t) => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
-    };
+    check('Kurzeintrag schliesst nahtlos an Geht 1 an', qKommt === geht1Time, `Geht 1=${geht1Time} Kommt 2=${qKommt}`);
     const diff = ((toMin(qGeht) - toMin(qKommt)) % 1440 + 1440) % 1440;
     check('Kurzeintrag-Dauer beträgt exakt 30 Minuten', diff === 30, `${qKommt} -> ${qGeht} (${diff} Min)`);
-    check(
-      'Kurzeintrag-Zeiten auf 15-Minuten-Raster gerundet',
-      toMin(qKommt) % 15 === 0 && toMin(qGeht) % 15 === 0,
-      `${qKommt} / ${qGeht}`
-    );
   }
 
   // Zeit von Hand korrigieren
