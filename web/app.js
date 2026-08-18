@@ -329,12 +329,22 @@
   }
 
   /** "+ Kurzeintrag": erfasst eine kurze, bereits erledigte Tätigkeit
-   *  (z.B. ein 30-Min-Meeting) in einem Schritt als Kommt/Geht-Paar –
-   *  Geht = jetzt (auf 15 Min gerundet), Kommt = Geht minus gewählte Dauer. */
-  function quickEntryHtml() {
-    const q = state.quickForm;
+   *  (z.B. ein 30-Min-Meeting) in einem Schritt als Kommt/Geht-Paar – schliesst
+   *  nahtlos an den letzten Eintrag des jeweiligen Tages an. Funktioniert für
+   *  jeden Tag (heute auf dem Stempeln-Screen, jeden beliebigen Tag über die
+   *  Tagesansicht), deshalb `iso`/`day` als Parameter statt fix "heute". */
+  function quickEntryHtml(iso, day) {
+    const limit = day.punches.length >= MAX_PUNCHES;
+    const nextType = day.punches.length % 2 === 0 ? 'Kommt' : 'Geht';
+    if (limit || nextType !== 'Kommt') return '';
+    // Ohne bisherigen Eintrag fehlt der Anschlusspunkt – nur für "heute" gibt
+    // es dann noch den Ersatz-Anker "jetzt". An einem anderen Tag muss der
+    // erste Eintrag über "+ nachtragen" mit fester Uhrzeit erfolgen.
+    if (day.punches.length === 0 && iso !== state.todayIso) return '';
+
+    const q = state.quickForm && state.quickForm.iso === iso ? state.quickForm : null;
     if (!q) {
-      return `<button class="btn dashed" data-action="quick-open">${ICON.plus} Kurzeintrag</button>`;
+      return `<button class="btn dashed" data-action="quick-open" data-iso="${iso}">${ICON.plus} Kurzeintrag</button>`;
     }
     return `<div class="card">
       <div class="label">Kurzeintrag – gerade eben erledigt</div>
@@ -394,7 +404,7 @@
       </div>`;
 
       if (!limit && nextType === 'Kommt') {
-        html += `<div class="section">${quickEntryHtml()}</div>`;
+        html += `<div class="section">${quickEntryHtml(iso, day)}</div>`;
       }
 
       if (day.abwesenheitStd || day.abwesenheitGrund) {
@@ -452,6 +462,11 @@
     html += `<div class="section">${addFormHtml(iso, day)}
       <div class="hint">Vergessen zu stempeln? Hier kannst du fehlende Kommt/Geht-Einträge für diesen Tag von Hand ergänzen.</div>
     </div>`;
+
+    const quick = quickEntryHtml(iso, day);
+    if (quick) {
+      html += `<div class="section">${quick}</div>`;
+    }
 
     html += `<div class="section"><span class="label">Absenz</span>${absenceCardHtml(iso, day)}</div>`;
     html += bemerkungHtml(iso, day);
@@ -869,7 +884,7 @@
         break;
 
       case 'quick-open':
-        state.quickForm = { duration: null, category: null };
+        state.quickForm = { iso, duration: null, category: null };
         render();
         break;
 
@@ -894,19 +909,20 @@
           toast('Bitte Dauer und Tätigkeit wählen');
           break;
         }
-        const todayIso = state.todayIso;
-        const today = getDay(todayIso);
-        if (today.punches.length + 2 > MAX_PUNCHES) {
+        const targetIso = q.iso;
+        const target = getDay(targetIso);
+        if (target.punches.length + 2 > MAX_PUNCHES) {
           toast('Maximum von 4 Paaren pro Tag erreicht');
           break;
         }
         const minutes = parseInt(q.duration, 10);
         // Schliesst direkt an den letzten Eintrag an (kein Überschneiden mit
         // bereits Erfasstem) – nur beim allerersten Eintrag des Tages gibt es
-        // noch keinen Anschlusspunkt, dann wird von "jetzt" rückwärts gerechnet.
+        // noch keinen Anschlusspunkt, dann wird von "jetzt" rückwärts gerechnet
+        // (nur möglich für "heute", siehe quickEntryHtml).
         let kommtTime, gehtTime;
-        if (today.punches.length > 0) {
-          kommtTime = today.punches[today.punches.length - 1].time;
+        if (target.punches.length > 0) {
+          kommtTime = target.punches[target.punches.length - 1].time;
           gehtTime = addMinutes(kommtTime, minutes);
         } else {
           gehtTime = roundToQuarterHour(timeNow());
@@ -916,7 +932,7 @@
           { type: 'Kommt', time: kommtTime, category: q.category },
           { type: 'Geht', time: gehtTime },
         ];
-        await updateDay(todayIso, (d) => ({ ...d, punches: [...d.punches, ...entries] }));
+        await updateDay(targetIso, (d) => ({ ...d, punches: [...d.punches, ...entries] }));
         state.quickForm = null;
         render();
         toast(`Kurzeintrag: ${q.duration} · ${q.category} (${kommtTime}–${gehtTime})`);

@@ -9,7 +9,7 @@ automatisch auf einen kleinen Server, sobald eine Verbindung besteht.
 | Bereich | Details |
 |---|---|
 | **Stempeln** | Grosser Button, erkennt automatisch Kommt/Geht, max. 4 Paare pro Tag. Vor jedem „Kommt" ist eine Tätigkeit Pflicht (Büro, Garantie, Werkstatt, Testen, Testevents, Sonstiges). |
-| **Kurzeintrag** | „+ Kurzeintrag" auf dem Stempeln-Screen: kurze, bereits erledigte Tätigkeit (15/30/45/60 Min + Tätigkeit) in einem Schritt als Kommt/Geht-Paar erfassen, ohne manuell zweimal zu stempeln. Schliesst nahtlos an den letzten Eintrag des Tages an (kein Überschneiden); ohne bisherigen Eintrag wird von „jetzt" rückwärts gerechnet (15-Min-gerundet). |
+| **Kurzeintrag** | „+ Kurzeintrag" auf dem Stempeln-Screen **und** in der Tagesansicht (für jeden beliebigen Tag, z.B. über Monat → Tag antippen): kurze, bereits erledigte Tätigkeit (15/30/45/60 Min + Tätigkeit) in einem Schritt als Kommt/Geht-Paar erfassen, ohne manuell zweimal zu stempeln. Schliesst nahtlos an den letzten Eintrag des jeweiligen Tages an (kein Überschneiden); nur beim allerersten Eintrag von „heute" wird ohne Anschlusspunkt von „jetzt" rückwärts gerechnet (15-Min-gerundet) – an anderen Tagen braucht der erste Eintrag „+ nachtragen" mit fester Uhrzeit. |
 | **Absenz** | Umschalter auf dem Startbildschirm: Stundenzahl + Grund (Ferien, krank, Unfall, geschäftlich, Weiterbild'g – exakt die Dropdown-Liste der Excel-Vorlage). |
 | **Tag** | Beliebiges Datum per Pfeilen, jeder Eintrag editier- und löschbar, „+ nachtragen" für vergessene Stempel an **jedem** Tag, Absenz und Bemerkung pro Tag. |
 | **Woche** | Kalenderwoche (ISO), Stunden bzw. Absenz pro Tag, Tippen springt in die Tagesansicht, Wochentotal. |

@@ -212,7 +212,7 @@ function pressed(label) {
   // Kurzeintrag: kurze, bereits erledigte Tätigkeit in einem Schritt erfassen
   // (z.B. ein 30-Min-Meeting) statt manuell zweimal zu stempeln. Muss direkt
   // an den letzten Eintrag anschliessen (kein Überschneiden mit Geht 1).
-  await clickAction({ action: 'quick-open' });
+  await clickAction({ action: 'quick-open', iso: todayIso() });
   check('Kurzeintrag-Formular offen', html().includes('data-action="quick-save"'));
   await clickAction({ action: 'quick-duration', value: '30 Min' });
   await clickAction({ action: 'quick-cat', value: 'Testevents' });
@@ -339,6 +339,26 @@ function pressed(label) {
     'Vollständig synchronisieren erreicht alle gespeicherten Tage',
     syncedIsos.size === storedDayCount,
     `${syncedIsos.size} von ${storedDayCount}`
+  );
+
+  // Kurzeintrag muss auch in der Tagesansicht für einen beliebigen, nicht-
+  // heutigen Tag verfügbar sein – nicht nur auf dem Stempeln-Screen. Bewusst
+  // erst hier (ganz am Ende) getestet: verändert pastIso auf 4:45 h, was
+  // frühere, auf "4:30 h" fixierte Wochen-/CSV-Checks kaputt machen würde.
+  await clickAction({ action: 'goday', iso: pastIso });
+  check(
+    'Kurzeintrag-Button auch für vergangenen Tag sichtbar',
+    html().includes(`data-action="quick-open" data-iso="${pastIso}"`)
+  );
+  await clickAction({ action: 'quick-open', iso: pastIso });
+  check('Kurzeintrag-Formular für vergangenen Tag offen', html().includes('data-action="quick-save"'));
+  await clickAction({ action: 'quick-duration', value: '15 Min' });
+  await clickAction({ action: 'quick-cat', value: 'Werkstatt' });
+  await clickAction({ action: 'quick-save' });
+  check('Kurzeintrag am vergangenen Tag gespeichert', /Kommt 2<\/span>\s*<span class="badge">Werkstatt/.test(html()));
+  check(
+    'Kurzeintrag am vergangenen Tag schliesst an 12:30 an (-> 12:45)',
+    html().includes('>12:30<') && html().includes('>12:45<')
   );
 
   // Löschen
